@@ -44,11 +44,11 @@ class MainActivity : Activity() {
                     step("B2 OK")
                 }
                 ModelManager.State.MISSING -> {
-                    step("Модель: не найдена (~4,7 ГБ, один раз по сети)")
+                    step("Модель: не найдена (${ModelManager.MODEL_NAME}, ~3 ГБ, один раз по сети)")
                     showDownloadButton()
                 }
                 ModelManager.State.HASH_MISMATCH -> {
-                    step("Модель: файл есть, но sha256 НЕ совпал - файл повреждён")
+                    step("Модель: файл есть, но sha256 НЕ совпал - файл повреждён, скачайте заново")
                     showDownloadButton()
                 }
             }
@@ -116,9 +116,7 @@ class MainActivity : Activity() {
                     }
                 }
                 runOnUiThread {
-                    step("Модель скачана, sha256: $hash")
-                    if (ModelManager.EXPECTED_SHA256.isBlank())
-                        step("Это первый запуск: сверьте хэш с huggingface.co и пришлите его - внесём в код")
+                    step("Модель скачана и проверена (sha256 совпал с эталоном)")
                     step("B2 OK")
                     button.isVisible = false
                     progressBar.isVisible = false
