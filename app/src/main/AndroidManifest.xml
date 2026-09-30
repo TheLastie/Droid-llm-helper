@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Шаг 1 без сети и разрешений. INTERNET добавим позже (скачивание модели),
-         сейчас он не нужен - и это честно для офлайн-приложения. -->
+    <!-- Шаг 2: сеть нужна РОВНО для одного экрана - первого запуска
+         (скачивание модели с проверкой sha256). Дальше приложение
+         работает офлайн; в авиарежиме экран скачивания честно скажет
+         "нет сети", а не упадёт. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 4,7 ГБ по 4G качаются долго - не даём экрану уснуть -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"
