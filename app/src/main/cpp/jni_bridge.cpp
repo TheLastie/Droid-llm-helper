@@ -43,6 +43,26 @@ static void log_bridge(enum ggml_log_level level, const char* text, void*) {
     if (detach) g_vm->DetachCurrentThread();
 }
 
+// фазовые маркеры в тот же лог-канал, что и логи llama.cpp
+static void emit_log(JNIEnv* env, const std::string& msg) {
+    if (!env || !g_listenerClass || !g_listenerMethod) return;
+    jstring s = env->NewStringUTF(msg.c_str());
+    env->CallStaticVoidMethod(g_listenerClass, g_listenerMethod, s);
+    env->DeleteLocalRef(s);
+}
+
+static void emit_log_anythread(const std::string& msg) {
+    if (!g_vm || !g_listenerClass || !g_listenerMethod) return;
+    JNIEnv* env = nullptr;
+    bool detach = false;
+    if (g_vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) {
+        g_vm->AttachCurrentThread(&env, nullptr);
+        detach = true;
+    }
+    emit_log(env, msg);
+    if (detach) g_vm->DetachCurrentThread();
+}
+
 #include <android/log.h>
 static void log_ts(const char* phase, long long ms) {
     __android_log_print(ANDROID_LOG_INFO, "OfflineRef", "%s: %lld ms", phase, ms);
@@ -97,9 +117,7 @@ Java_com_offlineref_LlamaEngine_nativeHello(JNIEnv* env, jclass) {
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
                                                 jstring jpath, jint n_ctx, jint n_threads) {
-    if (!g_backend_init) { llama_backend_init(); g_backend_init = true; }
-
-    // мост логов включаем ОДИН раз, до загрузки - иначе теряем первые строки
+    // мост логов включаем ОДИН раз, ДО backend_init, чтобы маркеры фаз работали
     if (!g_log_set) {
         jclass cls = env->FindClass("com/offlineref/LlamaEngine");
         if (cls) {
@@ -113,6 +131,9 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
         g_log_set = true;
     }
 
+    if (!g_backend_init) { llama_backend_init(); g_backend_init = true; }
+    emit_log(env, "phase: backend init ok");
+
     if (g_ctx)   { llama_free(g_ctx);       g_ctx   = nullptr; }
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
 
@@ -125,6 +146,7 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
     env->ReleaseStringUTFChars(jpath, path);
     long long t1 = clock_ms();
     log_ts("load_model_from_file", t1 - t0);
+    emit_log(env, "phase: load_model_from_file ok, " + std::to_string(t1 - t0) + " ms");
     if (!model) return 0;
 
     llama_context_params cparams = llama_context_default_params();
@@ -134,6 +156,7 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
     llama_context* ctx = llama_new_context_with_model(model, cparams);
     long long t2 = clock_ms();
     log_ts("new_context_with_model", t2 - t1);
+    emit_log(env, "phase: new_context ok, " + std::to_string(t2 - t1) + " ms");
     if (!ctx) { llama_model_free(model); return 0; }
 
     g_model = model;
@@ -152,6 +175,7 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
                                                jstring jsystem, jstring juser,
                                                jint max_tokens, jfloat jtemp) {
     if (!g_model || !g_ctx) return err(env, "модель не загружена");
+    emit_log(env, "phase: generate entered");
 
     const llama_vocab* vocab = llama_model_get_vocab(g_model);
 
@@ -183,6 +207,7 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     std::string prompt(tmpl.data(), (size_t)n);
     env->ReleaseStringUTFChars(jsystem, sys);
     env->ReleaseStringUTFChars(juser, user);
+    emit_log(env, "phase: template ok, " + std::to_string(prompt.size()) + " bytes");
 
     // --- токенизация: parse_special=true (нужен для <|im_start|> Qwen) ---
     std::vector<llama_token> tokens(8192);
@@ -195,6 +220,7 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     }
     if (n_tok <= 0) return err(env, "токенизация не удалась");
     tokens.resize((size_t)n_tok);
+    emit_log(env, "phase: tokenized " + std::to_string(n_tok) + " tokens");
 
     // --- генерация ---
     const int n_vocab = llama_n_vocab(vocab);
@@ -203,8 +229,13 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     std::string out;
 
     llama_batch batch = llama_batch_get_one(tokens.data(), (int32_t)tokens.size());
+    bool first_decode = true;
     for (int i = 0; i < max; i++) {
         if (llama_decode(g_ctx, batch) != 0) { out += " [ошибка decode]"; break; }
+        if (first_decode) {
+            first_decode = false;
+            emit_log(env, "phase: first decode ok, token " + std::to_string(i));
+        }
         const float* logits = llama_get_logits_ith(g_ctx, batch.n_tokens - 1);
         if (!logits) break;
         llama_token next = sample_token(logits, n_vocab, temp);
