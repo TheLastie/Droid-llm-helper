@@ -18,6 +18,7 @@
 static JavaVM*     g_vm = nullptr;
 static jclass      g_listenerClass = nullptr;
 static jmethodID   g_listenerMethod = nullptr;
+static jmethodID   g_tokenMethod = nullptr;
 static bool        g_log_set = false;
 
 jint JNI_OnLoad(JavaVM* vm, void*) {
@@ -105,6 +106,8 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
             g_listenerClass = (jclass)env->NewGlobalRef(cls);
             g_listenerMethod = env->GetStaticMethodID(g_listenerClass, "onNativeLog",
                                                       "(Ljava/lang/String;)V");
+            g_tokenMethod = env->GetStaticMethodID(g_listenerClass, "onNativeToken",
+                                                   "(Ljava/lang/String;)V");
             llama_log_set(log_bridge, nullptr);
         }
         g_log_set = true;
@@ -208,7 +211,15 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
         if (llama_token_is_eog(vocab, next)) break;
         char buf[64];
         int32_t len = llama_token_to_piece(vocab, next, buf, (int32_t)sizeof(buf), 0, true);
-        if (len > 0) out.append(buf, (size_t)len);
+        if (len > 0) {
+            out.append(buf, (size_t)len);
+            // стриминг: каждый токен сразу в UI (тот же JNI env, тот же поток)
+            if (g_tokenMethod && g_listenerClass) {
+                jstring piece = env->NewStringUTF(std::string(buf, (size_t)len).c_str());
+                env->CallStaticVoidMethod(g_listenerClass, g_tokenMethod, piece);
+                env->DeleteLocalRef(piece);
+            }
+        }
         batch = llama_batch_get_one(&next, 1);
     }
 
