@@ -1,0 +1,53 @@
+name: build-apk
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # НЕ использовать android-actions/setup-android - сломан на новых runner'ах
+      - run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10"
+
+      # Keystore декодируется автоматически в app/build.gradle при сборке.
+      # Проверим, что декодирование сработало:
+      - name: Decode keystore
+        run: |
+          cd keystore
+          tr -d '[:space:]' < debug.keystore.b64 | base64 -d > debug.keystore
+          ls -la debug.keystore
+
+      - name: Build
+        run: gradle assembleDebug --stacktrace
+
+      # Правило 1: класс обязан быть в dex, иначе Kotlin не компилировался
+      - name: Check MainActivity in dex
+        run: python3 tools/check_dex.py
+
+      - name: Hash APK
+        run: sha256sum app/build/outputs/apk/debug/*.apk
+
+      # Правило 2: уникальное имя на каждую сборку - никаких app-debug.apk
+      - name: Rename with version
+        run: |
+          cd app/build/outputs/apk/debug
+          mv app-debug.apk OfflineRef-v${{ github.run_number }}-b1.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OfflineRef-v${{ github.run_number }}
+          path: app/build/outputs/apk/debug/OfflineRef-v${{ github.run_number }}-b1.apk
