@@ -1,23 +1,32 @@
 package com.offlineref
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import androidx.core.view.isVisible
+import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
 
-// ШАГ 1 (бисекционная сборка "B1 OK" по правилу 4.5 playbook):
-// доказывает, что весь конфигурационный контур (Kotlin-плагин, JVM 17,
-// signing, manifest) работает. Дальше добавляем слои по одному.
+// ШАГ 1+2 (бисекция по playbook): B1 - конфигурация, B2 - скачивание модели.
+// Каждый следующий слой добавляем отдельным шагом, чтобы падение
+// локализовалось одной сборкой.
 
 class MainActivity : Activity() {
 
     private lateinit var status: TextView
+    private lateinit var progressLine: TextView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var button: Button
+    private val mm by lazy { ModelManager(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,10 +36,23 @@ class MainActivity : Activity() {
             step("Устройство: ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
             step("ABI: ${Build.SUPPORTED_ABIS?.joinToString()}")
             checkSigning()
-            step("B1 OK")
+            when (mm.state()) {
+                ModelManager.State.READY -> {
+                    step("Модель: на месте (${ModelManager.MODEL_NAME})")
+                    if (ModelManager.EXPECTED_SHA256.isBlank())
+                        step("ВНИМАНИЕ: эталонный sha256 в коде не задан, проверка отключена")
+                    step("B2 OK")
+                }
+                ModelManager.State.MISSING -> {
+                    step("Модель: не найдена (~4,7 ГБ, один раз по сети)")
+                    showDownloadButton()
+                }
+                ModelManager.State.HASH_MISMATCH -> {
+                    step("Модель: файл есть, но sha256 НЕ совпал - файл повреждён")
+                    showDownloadButton()
+                }
+            }
         } catch (t: Throwable) {
-            // showFatal: приложение НЕ падает молча, а показывает traceback
-            // и предлагает отправить его одним тапом (правило 4.2 playbook)
             showFatal(t)
         }
     }
@@ -38,18 +60,83 @@ class MainActivity : Activity() {
     private fun buildUi() {
         status = TextView(this).apply {
             textSize = 16f
-            setPadding(48, 48, 48, 48)
+            setPadding(48, 48, 48, 24)
+        }
+        progressLine = TextView(this).apply {
+            textSize = 14f
+            setPadding(48, 0, 48, 0)
+        }
+        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 1000
+            isVisible = false
+            setPadding(48, 8, 48, 8)
+        }
+        button = Button(this).apply {
+            text = "Скачать модель"
+            isVisible = false
+            setPadding(48, 8, 48, 8)
         }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(status)
+            addView(progressLine)
+            addView(progressBar)
+            addView(button)
         }
         setContentView(ScrollView(this).apply { addView(box) })
     }
 
+    private fun showDownloadButton() {
+        progressBar.isVisible = true
+        button.isVisible = true
+        button.setOnClickListener {
+            button.isEnabled = false
+            button.text = "Качаю... не закрывайте приложение"
+            startDownload()
+        }
+    }
+
+    private fun startDownload() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "offlineref:download")
+        wake.acquire(4 * 60 * 60 * 1000L)   // до 4 часов на 4,7 ГБ
+        Thread {
+            var lastPct = -1
+            try {
+                val hash = mm.download { done, total ->
+                    val pct = if (total > 0) (done * 100 / total).toInt() else -1
+                    if (pct != lastPct) {
+                        lastPct = pct
+                        val mbDone = done / 1048576
+                        val mbTotal = if (total > 0) "${total / 1048576}" else "?"
+                        runOnUiThread {
+                            progressBar.progress = if (pct >= 0) pct * 10 else 0
+                            progressLine.text = "$mbDone / $mbTotal МБ" + if (pct >= 0) " ($pct%)" else ""
+                        }
+                    }
+                }
+                runOnUiThread {
+                    step("Модель скачана, sha256: $hash")
+                    if (ModelManager.EXPECTED_SHA256.isBlank())
+                        step("Это первый запуск: сверьте хэш с huggingface.co и пришлите его - внесём в код")
+                    step("B2 OK")
+                    button.isVisible = false
+                    progressBar.isVisible = false
+                    progressLine.text = ""
+                }
+            } catch (t: Throwable) {
+                runOnUiThread {
+                    button.isEnabled = true
+                    button.text = "Повторить скачивание"
+                    step("Ошибка скачивания: ${t.message ?: t.javaClass.simpleName}")
+                }
+            } finally {
+                wake.release()
+            }
+        }.start()
+    }
+
     private fun checkSigning() {
-        // Косвенная проверка, что keystore подхватился: если бы подписи не было,
-        // система бы не установила APK вообще. Здесь лишь фиксируем факт запуска.
         val sigs = packageManager.getPackageInfo(packageName, 64).signatures
         step("Подписей в APK: ${sigs?.size ?: 0}")
     }
