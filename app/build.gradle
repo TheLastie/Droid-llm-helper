@@ -7,13 +7,30 @@ android {
     namespace 'com.offlineref'
     compileSdk 34
 
+    // NDK 27+: обязателен для 16KB-страниц памяти Android 15/16 (playbook 2).
+    // Более старый NDK соберёт .so молча, но он не загрузится на устройстве.
+    ndkVersion "27.0.12077973"
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
     defaultConfig {
         applicationId "com.offlineref"
         minSdk 26
         targetSdk 34
-        versionCode 3
-        versionName "0.3.0"
+        versionCode 4
+        versionName "0.4.0"
         ndk { abiFilters "arm64-v8a" }   // правило 2: только наш ABI, -30 МБ
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++17"
+                abiFilters "arm64-v8a"
+            }
+        }
     }
 
     // ФИКСИРОВАННЫЙ ключ (правило 6 playbook): декодируется из base64,
