@@ -41,6 +41,10 @@ android {
         }
     }
 
+    buildFeatures {
+        buildConfig true   // AGP 8: по умолчанию ВЫКЛЮЧЕН - BuildConfig не генерируется
+    }
+
     compileOptions {                      // правило 1: иначе Inconsistent JVM-target
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
