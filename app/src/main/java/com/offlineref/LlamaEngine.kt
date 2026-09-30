@@ -1,9 +1,8 @@
 package com.offlineref
 
-// ШАГ 3a: обёртка над нативной библиотекой.
-// System.loadLibrary бросит UnsatisfiedLinkError, если .so не загрузился
-// (16KB-страницы, неверный ABI, битый файл) - MainActivity покажет это
-// на аварийном экране с логом (правило 4 playbook).
+// JNI-мост к llama.cpp v0.5.0 (CPU-only).
+// Ошибки нативной стороны возвращаются строками с префиксом "ERR:" -
+// нативный код не бросает исключения в JVM (проще диагностика в поле).
 
 object LlamaEngine {
     init {
@@ -12,5 +11,12 @@ object LlamaEngine {
 
     external fun nativeHello(): String
 
-    // ШАГ 3b: loadModel(path), generate(prompt, callback), unload()
+    // 0 = не удалось загрузить (путь неверный, нехватка памяти, битый GGUF)
+    external fun nativeLoadModel(path: String, nCtx: Int, nThreads: Int): Long
+
+    // "ERR: ..." при ошибке, иначе сгенерированный текст
+    external fun nativeGenerate(systemPrompt: String, userPrompt: String,
+                                maxTokens: Int, temp: Float): String
+
+    external fun nativeUnload()
 }
