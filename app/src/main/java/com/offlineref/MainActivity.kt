@@ -36,6 +36,13 @@ class MainActivity : Activity() {
     private lateinit var buttonSend: Button
 
     private val mm by lazy { ModelManager(this) }
+
+    init {
+        // нативные логи llama.cpp -> серые строки в чате (диагностика в поле)
+        LlamaEngine.logSink = { line ->
+            if (line.isNotEmpty()) runOnUiThread { logBubble(line) }
+        }
+    }
     @Volatile private var modelHandle: Long = 0L
     @Volatile private var generating = false
 
@@ -137,6 +144,17 @@ class MainActivity : Activity() {
         buttonSend.isVisible = true
         bubble("OfflineRef готов. Работаю полностью офлайн. " +
                 "Задайте вопрос - ответ до ~60 секунд.", assistant = true)
+    }
+
+    private fun logBubble(text: String) {
+        val tv = TextView(this).apply {
+            this.text = text
+            textSize = 11f
+            setTextColor(Color.GRAY)
+            setPadding(32, 4, 32, 4)
+        }
+        chatBox.addView(tv)
+        chatScroll.post { chatScroll.fullScroll(ScrollView.FOCUS_DOWN) }
     }
 
     private fun bubble(text: String, assistant: Boolean): TextView {
@@ -258,8 +276,10 @@ class MainActivity : Activity() {
 
     // ---------- Служебное ----------
 
-    private fun threads() =
-        Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
+    // 4 потока осознанно: D7200 = 2xA715 + 6xA510, при 8 потоках
+    // планировщик Android гоняет потоки между кластерами и всё драматично
+    // замедляется (гипотеза зависания загрузки)
+    private fun threads() = 4
 
     override fun onDestroy() {
         try { LlamaEngine.nativeUnload() } catch (_: Throwable) { }
