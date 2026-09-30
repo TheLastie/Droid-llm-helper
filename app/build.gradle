@@ -1,0 +1,59 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.offlineref'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.offlineref"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "0.1.0"
+        ndk { abiFilters "arm64-v8a" }   // правило 2: только наш ABI, -30 МБ
+    }
+
+    // ФИКСИРОВАННЫЙ ключ (правило 6 playbook): декодируется из base64,
+    // который лежит в репозитории. Иначе каждая CI-сборка = новый ключ =
+    // INSTALL_FAILED_UPDATE_INCOMPATIBLE у пользователя в поле.
+    signingConfigs {
+        debug {
+            def ks = file("../keystore/debug.keystore")
+            def b64 = file("../keystore/debug.keystore.b64")
+            if (!ks.exists() && b64.exists()) {
+                ks.setBytes(b64.text.replaceAll("\s", "").decodeBase64())
+            }
+            storeFile ks
+            storePassword "offlineref"
+            keyAlias "offlineref"
+            keyPassword "offlineref"
+        }
+    }
+    buildTypes {
+        debug  { signingConfig signingConfigs.debug }
+        release {
+            signingConfig signingConfigs.debug   // v1: один ключ на все сборки
+            minifyEnabled false                  // включим позже (правило 7)
+            shrinkResources false
+        }
+    }
+
+    compileOptions {                      // правило 1: иначе Inconsistent JVM-target
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions { jvmTarget = '17' }
+
+    packagingOptions {
+        jniLibs { useLegacyPackaging = true }  // = extractNativeLibs, см. манифест
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    // Шаг 1 (B1): намеренно МИНИМУМ зависимостей. Compose/ONNX/llama.cpp
+    // добавляем отдельными шагами, чтобы бисекция (правило 4.5) работала.
+}
