@@ -70,6 +70,7 @@ class MainActivity : Activity() {
                 ModelManager.State.READY -> {
                     step("Модель: на месте (${ModelManager.MODEL_NAME})")
                     showChat()
+                    runCpuBench()
                 }
                 ModelManager.State.MISSING -> {
                     step("Модель: не найдена (${ModelManager.MODEL_NAME}, ~3 ГБ, один раз по сети)")
@@ -181,6 +182,22 @@ class MainActivity : Activity() {
             chatScroll.post { chatScroll.fullScroll(ScrollView.FOCUS_DOWN) }
         }
         return tv
+    }
+
+    // Быстрый тест здоровья CPU: 2 секунты однопоточного целочисленного
+    // цикла. Ориентир для mid-range 2024+: 1.5-3.0 (млрд итераций).
+    // Значительно ниже = частоты зажаты (энергосбережение/троттлинг/режим сна).
+    private fun runCpuBench() {
+        Thread {
+            val t0 = System.nanoTime()
+            var x = 0x9E3779B97F4A7C15L
+            var iters = 0L
+            while (System.nanoTime() - t0 < 2_000_000_000L) {
+                x = x * 6364136223846793005L + 1442695040888963407L
+                iters++
+            }
+            logBubble("CPU bench: %.2f Г-итераций/2с (норма 1.5-3.0)".format(iters / 1e9))
+        }.start()
     }
 
     // ---------- Чат ----------
