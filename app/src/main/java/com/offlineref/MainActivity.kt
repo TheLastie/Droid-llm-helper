@@ -38,9 +38,13 @@ class MainActivity : Activity() {
     private val mm by lazy { ModelManager(this) }
 
     init {
-        // нативные логи llama.cpp -> серые строки в чате (диагностика в поле)
+        // нативные логи llama.cpp -> серые строки в чате (диагностика в поле).
+        // Фильтр: фаза sched_reserve печатает СОТНИ строк llama_graph_n_input_tensors
+        // (шум про ROPE-узлы) - в поле они бесполезны, режем.
         LlamaEngine.logSink = { line ->
-            if (line.isNotEmpty()) runOnUiThread { logBubble(line) }
+            if (line.isNotEmpty() && !line.startsWith("llama_graph_n_input_tensors")) {
+                runOnUiThread { logBubble(line) }
+            }
         }
     }
     @Volatile private var modelHandle: Long = 0L
