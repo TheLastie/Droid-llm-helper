@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <random>
+#include <ctime>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,39 @@
 // ШАГ 3b: полный JNI-мост к llama.cpp v0.5.0.
 // Сознательно без llama_sampler/common: вручную argmax/temperature -
 // меньше зависимостей от смены API между релизами.
+
+// ---- мост нативных логов в UI (диагностика зависаний, playbook 4) ----
+static JavaVM*     g_vm = nullptr;
+static jclass      g_listenerClass = nullptr;
+static jmethodID   g_listenerMethod = nullptr;
+static bool        g_log_set = false;
+
+jint JNI_OnLoad(JavaVM* vm, void*) {
+    g_vm = vm;
+    return JNI_VERSION_1_6;
+}
+
+static void log_bridge(enum ggml_log_level level, const char* text, void*) {
+    (void)level;
+    if (!g_vm || !g_listenerClass || !g_listenerMethod || !text) return;
+    JNIEnv* env = nullptr;
+    bool detach = false;
+    if (g_vm->GetEnv((void**)&env, JNI_VERSION_1_6) != JNI_OK) {
+        g_vm->AttachCurrentThread(&env, nullptr);
+        detach = true;
+    }
+    if (env) {
+        jstring s = env->NewStringUTF(text);
+        env->CallStaticVoidMethod(g_listenerClass, g_listenerMethod, s);
+        env->DeleteLocalRef(s);
+    }
+    if (detach) g_vm->DetachCurrentThread();
+}
+
+#include <android/log.h>
+static void log_ts(const char* phase, long long ms) {
+    __android_log_print(ANDROID_LOG_INFO, "OfflineRef", "%s: %lld ms", phase, ms);
+}
 
 namespace {
 
@@ -42,6 +76,12 @@ llama_token sample_token(const float* logits, int n_vocab, float temp) {
     return (llama_token)(n_vocab - 1);
 }
 
+long long clock_ms() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
 jstring err(JNIEnv* env, const std::string& msg) {
     return env->NewStringUTF(("ERR: " + msg).c_str());
 }
@@ -58,14 +98,30 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
                                                 jstring jpath, jint n_ctx, jint n_threads) {
     if (!g_backend_init) { llama_backend_init(); g_backend_init = true; }
 
+    // мост логов включаем ОДИН раз, до загрузки - иначе теряем первые строки
+    if (!g_log_set) {
+        jclass cls = env->FindClass("com/offlineref/LlamaEngine");
+        if (cls) {
+            g_listenerClass = (jclass)env->NewGlobalRef(cls);
+            g_listenerMethod = env->GetStaticMethodID(g_listenerClass, "onNativeLog",
+                                                      "(Ljava/lang/String;)V");
+            llama_log_set(log_bridge, nullptr);
+        }
+        g_log_set = true;
+    }
+
     if (g_ctx)   { llama_free(g_ctx);       g_ctx   = nullptr; }
     if (g_model) { llama_model_free(g_model); g_model = nullptr; }
+
+    long long t0 = clock_ms();
 
     const char* path = env->GetStringUTFChars(jpath, nullptr);
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = 0;   // v1: только CPU (GPU на MediaTek - отдельная история)
     llama_model* model = llama_load_model_from_file(path, mparams);
     env->ReleaseStringUTFChars(jpath, path);
+    long long t1 = clock_ms();
+    log_ts("load_model_from_file", t1 - t0);
     if (!model) return 0;
 
     llama_context_params cparams = llama_context_default_params();
@@ -73,6 +129,8 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
     cparams.n_threads       = (int32_t)n_threads;
     cparams.n_threads_batch = (int32_t)n_threads;
     llama_context* ctx = llama_new_context_with_model(model, cparams);
+    long long t2 = clock_ms();
+    log_ts("new_context_with_model", t2 - t1);
     if (!ctx) { llama_model_free(model); return 0; }
 
     g_model = model;
