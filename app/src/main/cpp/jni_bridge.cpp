@@ -135,7 +135,7 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
     emit_log(env, "phase: backend init ok");
 
     if (g_ctx)   { llama_free(g_ctx);       g_ctx   = nullptr; }
-    if (g_model) { llama_model_free(g_model); g_model = nullptr; }
+    if (g_model) { llama_free_model(g_model); g_model = nullptr; }
 
     long long t0 = clock_ms();
 
@@ -157,7 +157,7 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
     long long t2 = clock_ms();
     log_ts("new_context_with_model", t2 - t1);
     emit_log(env, "phase: new_context ok, " + std::to_string(t2 - t1) + " ms");
-    if (!ctx) { llama_model_free(model); return 0; }
+    if (!ctx) { llama_free_model(model); return 0; }
 
     g_model = model;
     g_ctx   = ctx;
@@ -167,7 +167,7 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
 extern "C" JNIEXPORT void JNICALL
 Java_com_offlineref_LlamaEngine_nativeUnload(JNIEnv*, jclass) {
     if (g_ctx)   { llama_free(g_ctx);         g_ctx   = nullptr; }
-    if (g_model) { llama_model_free(g_model); g_model = nullptr; }
+    if (g_model) { llama_free_model(g_model); g_model = nullptr; }
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -177,7 +177,6 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     if (!g_model || !g_ctx) return err(env, "модель не загружена");
     emit_log(env, "phase: generate entered");
 
-    const llama_vocab* vocab = llama_model_get_vocab(g_model);
 
     // --- chat template (взят из метаданных GGUF, add_assistant=true) ---
     const char* sys  = env->GetStringUTFChars(jsystem, nullptr);
@@ -211,11 +210,11 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
 
     // --- токенизация: parse_special=true (нужен для <|im_start|> Qwen) ---
     std::vector<llama_token> tokens(8192);
-    int32_t n_tok = llama_tokenize(vocab, prompt.c_str(), (int32_t)prompt.size(),
+    int32_t n_tok = llama_tokenize(g_model, prompt.c_str(), (int32_t)prompt.size(),
                                    tokens.data(), (int32_t)tokens.size(), false, true);
     if (n_tok < 0) {
         tokens.resize((size_t)(-n_tok) + 8);
-        n_tok = llama_tokenize(vocab, prompt.c_str(), (int32_t)prompt.size(),
+        n_tok = llama_tokenize(g_model, prompt.c_str(), (int32_t)prompt.size(),
                                tokens.data(), (int32_t)tokens.size(), false, true);
     }
     if (n_tok <= 0) return err(env, "токенизация не удалась");
@@ -223,7 +222,7 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     emit_log(env, "phase: tokenized " + std::to_string(n_tok) + " tokens");
 
     // --- генерация ---
-    const int n_vocab = llama_n_vocab(vocab);
+    const int n_vocab = llama_n_vocab(g_model);
     const int max     = max_tokens > 0 ? max_tokens : 256;
     const float temp  = jtemp;
     std::string out;
