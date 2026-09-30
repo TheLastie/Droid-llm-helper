@@ -229,7 +229,7 @@ class MainActivity : Activity() {
                     sb.append(piece)
                     runOnUiThread { thinking.text = "OfflineRef: " + sb.toString() }
                 }
-                val ans = LlamaEngine.nativeGenerate(systemPrompt, q, 256, 0.2f)
+                val ans = LlamaEngine.nativeGenerate(systemPrompt, q, 200, 0.2f)
                 LlamaEngine.tokenSink = null
                 val dt = (System.currentTimeMillis() - t0) / 1000
                 thinking.text = if (ans.startsWith("ERR:"))
@@ -301,10 +301,10 @@ class MainActivity : Activity() {
 
     // ---------- Служебное ----------
 
-    // 4 потока осознанно: D7200 = 2xA715 + 6xA510, при 8 потоках
-    // планировщик Android гоняет потоки между кластерами и всё драматично
-    // замедляется (гипотеза зависания загрузки)
-    private fun threads() = 4
+    // 2 потока = ровно 2 больших ядра Cortex-A715. Опыт v0.8.1: 4 потока
+    // заставляли первый llama_decode работать 80+ сек (разбиение графа
+    // между A715 и медленными A510 -> эффект отстающего). 2 потока - контрольный эксперимент.
+    private fun threads() = 2
 
     override fun onDestroy() {
         try { LlamaEngine.nativeUnload() } catch (_: Throwable) { }
