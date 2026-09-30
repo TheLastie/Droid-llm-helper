@@ -62,6 +62,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         try {
             buildUi()
+            step("OfflineRef v${BuildConfig.VERSION_NAME} (llama.cpp b4353, CPU)")
             step("Устройство: ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
             LlamaEngine.nativeHello()
             step("B3: JNI + llama.cpp OK")
