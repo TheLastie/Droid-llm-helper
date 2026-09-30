@@ -43,7 +43,7 @@ class MainActivity : Activity() {
         // (шум про ROPE-узлы) - в поле они бесполезны, режем.
         LlamaEngine.logSink = { line ->
             if (line.isNotEmpty() && !line.startsWith("llama_graph_n_input_tensors")) {
-                runOnUiThread { logBubble(line) }
+                logBubble(line)
             }
         }
     }
@@ -66,6 +66,7 @@ class MainActivity : Activity() {
             step("Устройство: ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
             LlamaEngine.nativeHello()
             step("B3: JNI + llama.cpp OK")
+            Thread { mm.cleanupStaleModels() }.start()
             when (mm.state()) {
                 ModelManager.State.READY -> {
                     step("Модель: на месте (${ModelManager.MODEL_NAME})")
@@ -154,14 +155,19 @@ class MainActivity : Activity() {
     }
 
     private fun logBubble(text: String) {
-        val tv = TextView(this).apply {
-            this.text = text
-            textSize = 11f
-            setTextColor(Color.GRAY)
-            setPadding(32, 4, 32, 4)
+        // ВСЕГДА с UI-потока: вызывается и из logSink, и из рабочих потоков.
+        // Прямой addView с чужого потока = CalledFromWrongThreadException
+        // на следующей отрисовке (краш ~1 с после старта, опыт v0.10.0).
+        runOnUiThread {
+            val tv = TextView(this).apply {
+                this.text = text
+                textSize = 11f
+                setTextColor(Color.GRAY)
+                setPadding(32, 4, 32, 4)
+            }
+            chatBox.addView(tv)
+            chatScroll.post { chatScroll.fullScroll(ScrollView.FOCUS_DOWN) }
         }
-        chatBox.addView(tv)
-        chatScroll.post { chatScroll.fullScroll(ScrollView.FOCUS_DOWN) }
     }
 
     private fun bubble(text: String, assistant: Boolean): TextView {
@@ -189,6 +195,7 @@ class MainActivity : Activity() {
     // Значительно ниже = частоты зажаты (энергосбережение/троттлинг/режим сна).
     private fun runCpuBench() {
         Thread {
+          try {
             val t0 = System.nanoTime()
             var x = 123456789L
             var iters = 0L
@@ -198,6 +205,9 @@ class MainActivity : Activity() {
                 iters++
             }
             logBubble("CPU bench: %.2f Г-итераций/2с (норма 1.5-3.0)".format(iters / 1e9))
+          } catch (t: Throwable) {
+            logBubble("CPU bench failed: " + (t.message ?: t.javaClass.simpleName))
+          }
         }.start()
     }
 
@@ -219,12 +229,12 @@ class MainActivity : Activity() {
             val thinking = bubble("OfflineRef: думаю...", assistant = true)
             try {
                 if (modelHandle == 0L) {
-                    thinking.text = "OfflineRef: загружаю модель в память (до пары минут)..."
+                    runOnUiThread { thinking.text = "OfflineRef: читаю модель в память (до ~минуты, ~2 ГБ)..." }
                     modelHandle = LlamaEngine.nativeLoadModel(
                         mm.modelFile.absolutePath, 2048, threads())
                     if (modelHandle == 0L) {
-                        thinking.text = "OfflineRef: не смог загрузить модель " +
-                                "(файл повреждён или не хватило памяти)"
+                        runOnUiThread { thinking.text = "OfflineRef: не смог загрузить модель " +
+                                "(файл повреждён или не хватило памяти)" }
                         return@Thread
                     }
                 }
@@ -251,12 +261,13 @@ class MainActivity : Activity() {
                 val ans = LlamaEngine.nativeGenerate(systemPrompt, q, 200, 0.2f)
                 LlamaEngine.tokenSink = null
                 val dt = (System.currentTimeMillis() - t0) / 1000
-                thinking.text = if (ans.startsWith("ERR:"))
+                val finalText = if (ans.startsWith("ERR:"))
                     "OfflineRef: ошибка генерации $ans"
                 else
                     "OfflineRef: " + sb.toString() + "\n\n(" + dt + " с)"
+                runOnUiThread { thinking.text = finalText }
             } catch (t: Throwable) {
-                thinking.text = "OfflineRef: исключение ${t.message ?: t.javaClass.simpleName}"
+                runOnUiThread { thinking.text = "OfflineRef: исключение " + (t.message ?: t.javaClass.simpleName) }
             } finally {
                 wake.release()
                 runOnUiThread {
@@ -323,7 +334,7 @@ class MainActivity : Activity() {
     // 1 поток: полностью без пула потоков ggml. Опыт v0.8.2: и 4, и 2 потока
     // зависали в первом decode на 80+ сек - подозрение на дедлок пула
     // или глубокий троттлинг при полной загрузке ядер. 1 поток - решающий тест.
-    private fun threads() = 1
+    private fun threads() = 2
 
     override fun onDestroy() {
         try { LlamaEngine.nativeUnload() } catch (_: Throwable) { }
