@@ -187,7 +187,7 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     msgs.push_back({"user", user});
 
     std::vector<char> tmpl(8192);
-    int32_t n = llama_chat_apply_template(nullptr, msgs.data(), msgs.size(),
+    int32_t n = llama_chat_apply_template(g_model, nullptr, msgs.data(), msgs.size(),
                                           true, tmpl.data(), (int32_t)tmpl.size());
     if (n < 0) {
         env->ReleaseStringUTFChars(jsystem, sys);
@@ -196,7 +196,7 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     }
     if (n >= (int32_t)tmpl.size()) {
         tmpl.resize((size_t)n + 1);
-        n = llama_chat_apply_template(nullptr, msgs.data(), msgs.size(),
+        n = llama_chat_apply_template(g_model, nullptr, msgs.data(), msgs.size(),
                                       true, tmpl.data(), (int32_t)tmpl.size());
         if (n < 0) {
             env->ReleaseStringUTFChars(jsystem, sys);
@@ -245,9 +245,9 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
         const float* logits = llama_get_logits_ith(g_ctx, batch.n_tokens - 1);
         if (!logits) break;
         llama_token next = sample_token(logits, n_vocab, temp);
-        if (llama_token_is_eog(vocab, next)) break;
+        if (llama_token_is_eog(g_model, next)) break;
         char buf[64];
-        int32_t len = llama_token_to_piece(vocab, next, buf, (int32_t)sizeof(buf), 0, true);
+        int32_t len = llama_token_to_piece(g_model, next, buf, (int32_t)sizeof(buf), 0, true);
         if (len > 0) {
             out.append(buf, (size_t)len);
             // стриминг: каждый токен сразу в UI (тот же JNI env, тот же поток)
