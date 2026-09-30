@@ -209,12 +209,19 @@ class MainActivity : Activity() {
                     }
                 }
                 val t0 = System.currentTimeMillis()
-                val ans = LlamaEngine.nativeGenerate(systemPrompt, q, 400, 0.2f)
+                val sb = StringBuilder()
+                // стриминг: каждый токен дописываем в пузырь сразу
+                LlamaEngine.tokenSink = { piece ->
+                    sb.append(piece)
+                    runOnUiThread { thinking.text = "OfflineRef: " + sb.toString() }
+                }
+                val ans = LlamaEngine.nativeGenerate(systemPrompt, q, 256, 0.2f)
+                LlamaEngine.tokenSink = null
                 val dt = (System.currentTimeMillis() - t0) / 1000
                 thinking.text = if (ans.startsWith("ERR:"))
                     "OfflineRef: ошибка генерации $ans"
                 else
-                    "OfflineRef: $ans\n\n($dt с)"
+                    "OfflineRef: " + sb.toString() + "\n\n(" + dt + " с)"
             } catch (t: Throwable) {
                 thinking.text = "OfflineRef: исключение ${t.message ?: t.javaClass.simpleName}"
             } finally {
