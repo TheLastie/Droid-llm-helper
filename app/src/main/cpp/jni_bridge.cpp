@@ -229,12 +229,18 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     std::string out;
 
     llama_batch batch = llama_batch_get_one(tokens.data(), (int32_t)tokens.size());
-    bool first_decode = true;
     for (int i = 0; i < max; i++) {
+        const bool mark = (i < 3) || (i % 32 == 0);
+        if (mark) {
+            emit_log(env, "phase: decode " + std::to_string(i) + " begin, batch " +
+                          std::to_string(batch.n_tokens));
+        }
+        long long d0 = clock_ms();
         if (llama_decode(g_ctx, batch) != 0) { out += " [ошибка decode]"; break; }
-        if (first_decode) {
-            first_decode = false;
-            emit_log(env, "phase: first decode ok, token " + std::to_string(i));
+        long long d1 = clock_ms();
+        if (mark) {
+            emit_log(env, "phase: decode " + std::to_string(i) + " done, " +
+                          std::to_string(d1 - d0) + " ms");
         }
         const float* logits = llama_get_logits_ith(g_ctx, batch.n_tokens - 1);
         if (!logits) break;
