@@ -111,6 +111,21 @@ class ModelManager(private val context: Context) {
         }
     }
 
+    // Удаляет устаревшие GGUF в папке models (например, старую 7B после
+    // смены модели) - иначе молча съедают гигабайты.
+    fun cleanupStaleModels() {
+        try {
+            val dir = primary().parentFile ?: return
+            if (!dir.isDirectory) return
+            dir.listFiles()?.forEach { f ->
+                if (f.isFile && f.name.endsWith(".gguf") &&
+                    f.name != MODEL_NAME && !f.name.endsWith(".part")) {
+                    f.delete()
+                }
+            }
+        } catch (_: Throwable) { }
+    }
+
     fun sha256(f: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         f.inputStream().use { input ->
@@ -125,12 +140,13 @@ class ModelManager(private val context: Context) {
     }
 
     companion object {
-        // q4_k_m вернул 404 (раскладка репозитория на Xet). q2_k подтверждён
-        // пользователем в браузере: 3,02 ГБ, хэш сверен.
-        const val MODEL_NAME = "qwen2.5-7b-instruct-q2_k.gguf"
+        // Исследование (замеры на Nothing Phone 2a): 7B не укладывается
+        // в 60 с на Dimensity 7200 (даже рабочий 7B ~2 ток/с). Взята 3B:
+        // промпт за секунды, генерация ~4-6 ток/с (Alibaba/академ. замеры).
+        const val MODEL_NAME = "qwen2.5-3b-instruct-q4_k_m.gguf"
         const val MODEL_URL =
-            "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q2_k.gguf"
-        const val EXPECTED_SHA256 =
-            "a0fc885ff014d73c02dcc4ad093f110c6dd4e0e308f84efe1accf078d364a87a"
+            "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf"
+        // ПУСТО: вписывается после первого скачивания (пришлите хэш с экрана)
+        const val EXPECTED_SHA256 = ""
     }
 }
