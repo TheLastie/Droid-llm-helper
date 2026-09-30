@@ -49,6 +49,7 @@ class MainActivity : Activity() {
     }
     @Volatile private var modelHandle: Long = 0L
     @Volatile private var generating = false
+    @Volatile private var gotFirstToken = false
 
     private val systemPrompt = "Ты - офлайн-справочник. Правила:\n" +
             "1. Отвечай по существу, простым языком, не более 6 предложений.\n" +
@@ -210,8 +211,21 @@ class MainActivity : Activity() {
                 }
                 val t0 = System.currentTimeMillis()
                 val sb = StringBuilder()
+                gotFirstToken = false
+                // секундомер: пока нет ни одного токена, раз в секунду
+                // показываем elapsed - отличие "зависло" от "медленно работает"
+                val ticker = object : Runnable {
+                    override fun run() {
+                        if (!generating || gotFirstToken) return
+                        val el = (System.currentTimeMillis() - t0) / 1000
+                        thinking.text = "OfflineRef: думаю... (" + el + " с)"
+                        thinking.postDelayed(this, 1000)
+                    }
+                }
+                thinking.post(ticker)
                 // стриминг: каждый токен дописываем в пузырь сразу
                 LlamaEngine.tokenSink = { piece ->
+                    gotFirstToken = true
                     sb.append(piece)
                     runOnUiThread { thinking.text = "OfflineRef: " + sb.toString() }
                 }
