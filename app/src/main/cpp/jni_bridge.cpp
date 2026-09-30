@@ -142,6 +142,11 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
     const char* path = env->GetStringUTFChars(jpath, nullptr);
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = 0;   // v1: только CPU (GPU на MediaTek - отдельная история)
+    // КЛЮЧЕВОЙ ФИКС (диагноз: decode 0 = буря page faults по холодному mmap
+    // на FBE/f2fs: 2.87 ГБ случайных чтений 4 КБ с UFS 2.2 = минуты).
+    // Читаем веса в ОЗУ ПРИ ЗАГРУЗКЕ (линейное чтение, ~30-60 с), дальше
+    // decode работает с тёплой памятью без единого fault'а.
+    mparams.use_mmap = false;
     llama_model* model = llama_load_model_from_file(path, mparams);
     env->ReleaseStringUTFChars(jpath, path);
     long long t1 = clock_ms();
