@@ -59,7 +59,7 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
     if (!g_backend_init) { llama_backend_init(); g_backend_init = true; }
 
     if (g_ctx)   { llama_free(g_ctx);       g_ctx   = nullptr; }
-    if (g_model) { llama_free_model(g_model); g_model = nullptr; }
+    if (g_model) { llama_model_free(g_model); g_model = nullptr; }
 
     const char* path = env->GetStringUTFChars(jpath, nullptr);
     llama_model_params mparams = llama_model_default_params();
@@ -73,7 +73,7 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
     cparams.n_threads       = (int32_t)n_threads;
     cparams.n_threads_batch = (int32_t)n_threads;
     llama_context* ctx = llama_new_context_with_model(model, cparams);
-    if (!ctx) { llama_free_model(model); return 0; }
+    if (!ctx) { llama_model_free(model); return 0; }
 
     g_model = model;
     g_ctx   = ctx;
@@ -83,7 +83,7 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
 extern "C" JNIEXPORT void JNICALL
 Java_com_offlineref_LlamaEngine_nativeUnload(JNIEnv*, jclass) {
     if (g_ctx)   { llama_free(g_ctx);         g_ctx   = nullptr; }
-    if (g_model) { llama_free_model(g_model); g_model = nullptr; }
+    if (g_model) { llama_model_free(g_model); g_model = nullptr; }
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -102,7 +102,7 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     msgs.push_back({"user", user});
 
     std::vector<char> tmpl(8192);
-    int32_t n = llama_chat_apply_template(g_model, nullptr, msgs.data(), msgs.size(),
+    int32_t n = llama_chat_apply_template(nullptr, msgs.data(), msgs.size(),
                                           true, tmpl.data(), (int32_t)tmpl.size());
     if (n < 0) {
         env->ReleaseStringUTFChars(jsystem, sys);
@@ -111,7 +111,7 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     }
     if (n >= (int32_t)tmpl.size()) {
         tmpl.resize((size_t)n + 1);
-        n = llama_chat_apply_template(g_model, nullptr, msgs.data(), msgs.size(),
+        n = llama_chat_apply_template(nullptr, msgs.data(), msgs.size(),
                                       true, tmpl.data(), (int32_t)tmpl.size());
         if (n < 0) {
             env->ReleaseStringUTFChars(jsystem, sys);
