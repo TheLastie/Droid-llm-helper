@@ -28,4 +28,13 @@ object LlamaEngine {
     fun onNativeLog(line: String) {
         logSink?.invoke(line.trim().trimEnd('\n'))
     }
+
+    // ---- стриминг токенов генерации (вызывается из C++ в decode-цикле) ----
+    @Volatile
+    var tokenSink: ((String) -> Unit)? = null
+
+    @JvmStatic
+    fun onNativeToken(piece: String) {
+        tokenSink?.invoke(piece)
+    }
 }
