@@ -16,7 +16,8 @@
 1. [x] B1: каркас, signing, CI, dex-проверка, аварийный экран
 2. [x] UI первого запуска (скачивание модели, sha256)
 2.5. [ ] UI чата (Compose)
-3. [ ] LlamaEngine: llama.cpp JNI, загрузка GGUF, генерация, стриминг
+3. [x] B3a: JNI-мост - NDK 27 (16KB), CMake, загрузка .so на Android 16
+3b. [ ] LlamaEngine: llama.cpp (FetchContent, пин коммита), загрузка GGUF, генерация
 4. [ ] База знаний: импорт .md/.txt/.pdf, чанкование
 5. [ ] Эмбеддинги: ONNX Runtime Mobile + multilingual-e5-small, sqlite-vec
 6. [ ] Retriever: гибрид векторный + FTS5, пороги, fallback с пометкой
