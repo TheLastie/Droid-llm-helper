@@ -26,6 +26,7 @@ class MainActivity : Activity() {
     private lateinit var progressLine: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var button: Button
+    private lateinit var buttonTest: Button
     private val mm by lazy { ModelManager(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,9 +41,8 @@ class MainActivity : Activity() {
             when (mm.state()) {
                 ModelManager.State.READY -> {
                     step("Модель: на месте (${ModelManager.MODEL_NAME})")
-                    if (ModelManager.EXPECTED_SHA256.isBlank())
-                        step("ВНИМАНИЕ: эталонный sha256 в коде не задан, проверка отключена")
                     step("B2 OK")
+                    showTestButton()
                 }
                 ModelManager.State.MISSING -> {
                     step("Модель: не найдена (${ModelManager.MODEL_NAME}, ~3 ГБ, один раз по сети)")
@@ -77,12 +77,18 @@ class MainActivity : Activity() {
             isVisible = false
             setPadding(48, 8, 48, 8)
         }
+        buttonTest = Button(this).apply {
+            text = "Тест модели (загрузка ~3 ГБ + генерация)"
+            isVisible = false
+            setPadding(48, 8, 48, 8)
+        }
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(status)
             addView(progressLine)
             addView(progressBar)
             addView(button)
+            addView(buttonTest)
         }
         setContentView(ScrollView(this).apply { addView(box) })
     }
@@ -96,6 +102,53 @@ class MainActivity : Activity() {
             startDownload()
         }
     }
+
+    private fun showTestButton() {
+        buttonTest.isVisible = true
+        buttonTest.setOnClickListener {
+            buttonTest.isEnabled = false
+            runModelTest()
+        }
+    }
+
+    private fun runModelTest() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        val wake = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "offlineref:test")
+        wake.acquire(10 * 60 * 1000L)
+        Thread {
+            try {
+                step("Загрузка модели в память (~3 ГБ, до пары минут)...")
+                val handle = LlamaEngine.nativeLoadModel(
+                    mm.modelFile.absolutePath, 2048, threads())
+                if (handle == 0L) {
+                    step("ОШИБКА: nativeLoadModel вернул 0 (файл битый или не хватило памяти)")
+                    return@Thread
+                }
+                step("Модель в памяти. Генерация тестового ответа...")
+                val t0 = System.currentTimeMillis()
+                val ans = LlamaEngine.nativeGenerate(
+                    "Ты - тестовый ассистент. Отвечай кратко и только по делу.",
+                    "Сколько будет 2+2? Ответь одним словом.",
+                    32, 0.0f)
+                val dt = (System.currentTimeMillis() - t0) / 1000
+                LlamaEngine.nativeUnload()
+                if (ans.startsWith("ERR:")) {
+                    step("Ошибка генерации: $ans")
+                } else {
+                    step("Ответ модели за $dt с: $ans")
+                    step("B3b OK")
+                }
+            } catch (t: Throwable) {
+                step("Исключение теста: ${t.message ?: t.javaClass.simpleName}")
+            } finally {
+                wake.release()
+                runOnUiThread { buttonTest.isEnabled = true }
+            }
+        }.start()
+    }
+
+    private fun threads() =
+        Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
 
     private fun startDownload() {
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
