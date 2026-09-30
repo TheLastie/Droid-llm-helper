@@ -36,6 +36,7 @@ class MainActivity : Activity() {
             step("Устройство: ${Build.MODEL}, Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})")
             step("ABI: ${Build.SUPPORTED_ABIS?.joinToString()}")
             checkSigning()
+            step("B3: JNI -> " + LlamaEngine.nativeHello())
             when (mm.state()) {
                 ModelManager.State.READY -> {
                     step("Модель: на месте (${ModelManager.MODEL_NAME})")
