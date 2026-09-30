@@ -1,0 +1,7 @@
+// ПРАВИЛО 1 (playbook): Kotlin-плагин ОБЯЗАТЕЛЕН в обоих файлах.
+// Без него AGP молча игнорирует .kt-файлы -> мгновенный краш при запуске,
+// сборка при этом УСПЕШНА. После первой сборки проверяй tools/check_dex.py
+plugins {
+    id 'com.android.application' version '8.5.0' apply false
+    id 'org.jetbrains.kotlin.android' version '1.9.24' apply false
+}
