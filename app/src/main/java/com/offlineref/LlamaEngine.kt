@@ -19,4 +19,13 @@ object LlamaEngine {
                                 maxTokens: Int, temp: Float): String
 
     external fun nativeUnload()
+
+    // ---- приём нативных логов llama.cpp (вызывается из C++ по JNI) ----
+    @Volatile
+    var logSink: ((String) -> Unit)? = null
+
+    @JvmStatic
+    fun onNativeLog(line: String) {
+        logSink?.invoke(line.trim().trimEnd('\n'))
+    }
 }
