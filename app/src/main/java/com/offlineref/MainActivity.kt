@@ -190,10 +190,11 @@ class MainActivity : Activity() {
     private fun runCpuBench() {
         Thread {
             val t0 = System.nanoTime()
-            var x = 0x9E3779B97F4A7C15L
+            var x = 123456789L
             var iters = 0L
             while (System.nanoTime() - t0 < 2_000_000_000L) {
-                x = x * 6364136223846793005L + 1442695040888963407L
+                x = x * 1103515245L + 12345L
+                if (x < 0) x = -x
                 iters++
             }
             logBubble("CPU bench: %.2f Г-итераций/2с (норма 1.5-3.0)".format(iters / 1e9))
