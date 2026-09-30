@@ -2,72 +2,113 @@ package com.offlineref
 
 import android.content.Context
 import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
-// ШАГ 2: управление моделью. Единственный компонент с сетью.
-// Качает GGUF по HTTPS, считает sha256 ПОКА пишет на диск
-// (4,7 ГБ дважды читать на телефоне - больно), атомарно
-// переименовывает .part -> готовый файл: битый файл не должен
-// выглядеть готовым (правило 3 playbook: хэшируем каждую сборку).
+// ШАГ 2.1: управление моделью. Единственный компонент с сетью.
+// История боли: HF вернул 404 на q4_k_m, а Android сообщил об этом
+// FileNotFoundException с URL в message - диагностика была бесполезна.
+// Теперь: коды HTTP читаем явно, докачка через Range, хэш сверяется
+// с эталоном (правило 3 playbook - хэшируем всё).
 
 class ModelManager(private val context: Context) {
 
     enum class State { READY, MISSING, HASH_MISMATCH }
 
-    val modelFile: File get() = File(context.filesDir, "models/$MODEL_NAME")
+    // Файл ищем в двух местах: внутреннее хранилище и внешнее
+    // приложение-специфичное (/sdcard/Android/data/com.offlineref/files/models).
+    // Второе - чтобы пользователь мог ВРУЧНУЮ скопировать файл, скачанный
+    // браузером, без второй траты трафика.
+    private fun primary() = File(context.filesDir, "models/$MODEL_NAME")
+    private fun externalCandidate() =
+        context.getExternalFilesDir(null)?.let { File(it, "models/$MODEL_NAME") }
+    private fun existing() = listOfNotNull(primary(), externalCandidate())
+        .firstOrNull { it.exists() }
+
+    val modelFile: File get() = existing() ?: primary()
 
     fun state(): State {
-        if (!modelFile.exists()) return State.MISSING
-        // Хэш ещё не внесён в код - верификация начнётся со следующего коммита
+        val f = existing() ?: return State.MISSING
         if (EXPECTED_SHA256.isBlank()) return State.READY
-        return if (sha256(modelFile) == EXPECTED_SHA256.lowercase())
+        return if (sha256(f) == EXPECTED_SHA256.lowercase())
             State.READY else State.HASH_MISMATCH
     }
 
-    // Возвращает фактический sha256 скачанного файла
+    // Возвращает фактический sha256 готового файла. Умеет докачивать .part.
     fun download(onProgress: (done: Long, total: Long) -> Unit): String {
-        modelFile.parentFile?.mkdirs()
-        val tmp = File(modelFile.parentFile, "$MODEL_NAME.part")
-        tmp.delete()
+        val target = primary().also { it.parentFile?.mkdirs() }
+        val tmp = File(target.parentFile, "$MODEL_NAME.part")
+        var resumeAt = if (tmp.exists()) tmp.length() else 0L
 
-        val conn = URL(MODEL_URL).openConnection() as HttpURLConnection
-        conn.connectTimeout = 30_000
-        conn.readTimeout = 60_000
-        conn.instanceFollowRedirects = true
-        conn.connect()
+        while (true) {
+            val conn = URL(MODEL_URL).openConnection() as HttpURLConnection
+            conn.connectTimeout = 30_000
+            conn.readTimeout = 60_000
+            conn.instanceFollowRedirects = true
+            if (resumeAt > 0) conn.setRequestProperty("Range", "bytes=$resumeAt-")
+            conn.connect()
+            val code = conn.responseCode
 
-        val total = conn.contentLengthLong   // у LFS-файлов HF размер известен
-        val digest = MessageDigest.getInstance("SHA-256")
-        var done = 0L
-
-        conn.inputStream.use { input ->
-            tmp.outputStream().use { out ->
-                val buf = ByteArray(1024 * 1024)
-                while (true) {
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    out.write(buf, 0, n)
-                    digest.update(buf, 0, n)
-                    done += n
-                    onProgress(done, total)
+            when {
+                // Диапазон за пределами файла: .part, похоже, уже полный - проверим
+                code == 416 && tmp.exists() -> {
+                    conn.disconnect()
+                    val h = sha256(tmp)
+                    if (h == EXPECTED_SHA256.lowercase()) {
+                        if (!tmp.renameTo(target)) throw IllegalStateException("rename failed")
+                        return h
+                    }
+                    tmp.delete(); resumeAt = 0; continue
                 }
-                out.flush()
+                // Сервер не поддерживает докачку - начинаем с нуля
+                resumeAt > 0 && code == 200 -> {
+                    conn.disconnect(); tmp.delete(); resumeAt = 0; continue
+                }
+                code != 200 && code != 206 -> {
+                    conn.disconnect()
+                    throw IOException(
+                        "HTTP $code: ${conn.responseMessage ?: "?"} (файл: $MODEL_NAME)")
+                }
             }
-        }
-        conn.disconnect()
 
-        val got = digest.digest().joinToString("") { "%02x".format(it) }
-        if (EXPECTED_SHA256.isNotBlank() && got != EXPECTED_SHA256.lowercase()) {
-            tmp.delete()   // битое скачивание не оставляем на диске
-            throw SecurityException("sha256 модели не совпал: $got")
+            val resumed = code == 206
+            val total = conn.contentLengthLong.takeIf { it > 0 }
+                ?.plus(if (resumed) resumeAt else 0) ?: -1
+            val digest = MessageDigest.getInstance("SHA-256")
+            var done = if (resumed) resumeAt else 0L
+
+            conn.inputStream.use { input ->
+                (if (resumed) FileOutputStream(tmp, true) else tmp.outputStream()).use { out ->
+                    val buf = ByteArray(1024 * 1024)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        if (!resumed) digest.update(buf, 0, n)
+                        done += n
+                        onProgress(done, total)
+                    }
+                    out.flush()
+                }
+            }
+            conn.disconnect()
+
+            // При докачке потоковый дайджест невалиден (старые байты не хэшировали)
+            val got = if (resumed) sha256(tmp)
+                      else digest.digest().joinToString("") { "%02x".format(it) }
+            if (EXPECTED_SHA256.isNotBlank() && got != EXPECTED_SHA256.lowercase()) {
+                tmp.delete()
+                throw SecurityException("sha256 не совпал: $got")
+            }
+            if (!tmp.renameTo(target)) {
+                tmp.delete()
+                throw IllegalStateException("не удалось переименовать .part")
+            }
+            return got
         }
-        if (!tmp.renameTo(modelFile)) {
-            tmp.delete()
-            throw IllegalStateException("не удалось переименовать .part в готовый файл")
-        }
-        return got
     }
 
     fun sha256(f: File): String {
@@ -84,11 +125,12 @@ class ModelManager(private val context: Context) {
     }
 
     companion object {
-        const val MODEL_NAME = "qwen2.5-7b-instruct-q4_k_m.gguf"
+        // q4_k_m вернул 404 (раскладка репозитория на Xet). q2_k подтверждён
+        // пользователем в браузере: 3,02 ГБ, хэш сверен.
+        const val MODEL_NAME = "qwen2.5-7b-instruct-q2_k.gguf"
         const val MODEL_URL =
-            "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf"
-        // ПУСТО = ждём первого скачивания на устройстве: приложение покажет
-        // фактический хэш, мы впишем его сюда - и включится жёсткая проверка.
-        const val EXPECTED_SHA256 = ""
+            "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q2_k.gguf"
+        const val EXPECTED_SHA256 =
+            "a0fc885ff014d73c02dcc4ad093f110c6dd4e0e308f84efe1accf078d364a87a"
     }
 }
