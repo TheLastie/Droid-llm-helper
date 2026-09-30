@@ -3,7 +3,9 @@ project(llamajni CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# llama.cpp v0.5.0 (пинованный тег). Тянется в CI - там есть сеть и git.
+# llama.cpp b4353 - версия, которую llama.rn обкатал на тысячах Android.
+# v0.5.0 отвергнута опытом: первый decode не завершался 200+ сек даже
+# на холодном телефоне при 1 потоке (подозрение на новый memory-sched).
 # GGML_NATIVE OFF: не применять флаги хоста (-march=native) к ARM-кросс-сборке.
 set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -15,7 +17,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 include(FetchContent)
 FetchContent_Declare(llamacpp
     GIT_REPOSITORY https://github.com/ggml-org/llama.cpp.git
-    GIT_TAG v0.5.0
+    GIT_TAG b4353
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(llamacpp)
 
