@@ -14,17 +14,22 @@ import android.net.Uri
 // не влезает в 60-секундный бюджет.
 
 class KbDb private constructor(private val appContext: Context) :
-    SQLiteOpenHelper(appContext, "kb", null, 1) {
+    SQLiteOpenHelper(appContext, "kb", null, 2) {
 
     data class Chunk(val docTitle: String, val text: String)
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE documents(id INTEGER PRIMARY KEY, title TEXT, added INTEGER)")
         db.execSQL("CREATE TABLE chunks(id INTEGER PRIMARY KEY, doc_id INTEGER, ordinal INTEGER, text TEXT)")
-        db.execSQL("CREATE VIRTUAL TABLE chunks_fts USING fts5(text)")
+        // FTS5 НЕ используем: модуль отсутствует на части прошивок
+        // (Nothing Phone 2a, Android 16 - "no such module: fts5").
+        // Поиск - скан по подстрокам в Kotlin (см. search()).
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldV: Int, newV: Int) { }
+    override fun onUpgrade(db: SQLiteDatabase, oldV: Int, newV: Int) {
+        // v1->v2: удаляем FTS-таблицу, если она создавалась на прошивке с fts5
+        try { db.execSQL("DROP TABLE IF EXISTS chunks_fts") } catch (_: Throwable) { }
+    }
 
     fun hasDocuments(): Boolean {
         readableDatabase.rawQuery("SELECT COUNT(*) FROM documents", null).use { c ->
@@ -63,11 +68,7 @@ class KbDb private constructor(private val appContext: Context) :
                 ccv.put("doc_id", docId)
                 ccv.put("ordinal", i)
                 ccv.put("text", ch)
-                val chunkId = db.insert("chunks", null, ccv)
-                val fcv = ContentValues()
-                fcv.put("rowid", chunkId)
-                fcv.put("text", ch)
-                db.insert("chunks_fts", null, fcv)
+                db.insert("chunks", null, ccv)
             }
             db.setTransactionSuccessful()
         } finally {
@@ -129,8 +130,6 @@ class KbDb private constructor(private val appContext: Context) :
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.execSQL("DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE doc_id=?)",
-                arrayOf(id))
             db.execSQL("DELETE FROM chunks WHERE doc_id=?", arrayOf(id))
             db.execSQL("DELETE FROM documents WHERE id=?", arrayOf(id))
             db.setTransactionSuccessful()
