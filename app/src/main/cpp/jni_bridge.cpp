@@ -288,24 +288,30 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_offlineref_TessApi_nativeTessInit(JNIEnv* env, jclass, jstring jpath, jstring jlang) {
     const char* path = env->GetStringUTFChars(jpath, nullptr);
     const char* lang = env->GetStringUTFChars(jlang, nullptr);
-    TessResultCode rc = TessBaseAPIInit3(TessBaseAPICreate(), path, lang);
+    TessBaseAPI* api = TessBaseAPICreate();
+    if (TessBaseAPIInit3(api, path, lang) != 0) {
+        TessBaseAPIDelete(api);
+        api = nullptr;
+    }
     env->ReleaseStringUTFChars(jpath, path);
     env->ReleaseStringUTFChars(jlang, lang);
-    return (jlong)(intptr_t)rc; // TessResultCode - это указатель на TessBaseAPI
+    return (jlong)(intptr_t)api;
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_offlineref_TessApi_nativeTessSetImage(JNIEnv* env, jclass, jlong handle,
                                                jbyteArray jpix, jint w, jint h) {
-    TessResultCode api = (TessResultCode)(intptr_t)handle;
+    TessBaseAPI* api = (TessBaseAPI*)(intptr_t)handle;
+    if (!api) return;
     jbyte* px = env->GetByteArrayElements(jpix, nullptr);
-    TessBaseAPISetImage(api, (const unsigned char*)px, w, h, 4, w * 4);
+    TessBaseAPISetImage(api, (const unsigned char*)px, (int)w, (int)h, 4, (int)w * 4);
     env->ReleaseByteArrayElements(jpix, px, JNI_ABORT);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_offlineref_TessApi_nativeTessGetText(JNIEnv* env, jclass, jlong handle) {
-    TessResultCode api = (TessResultCode)(intptr_t)handle;
+    TessBaseAPI* api = (TessBaseAPI*)(intptr_t)handle;
+    if (!api) return env->NewStringUTF("");
     char* txt = TessBaseAPIGetUTF8Text(api);
     jstring out = txt ? env->NewStringUTF(txt) : env->NewStringUTF("");
     if (txt) TessDeleteText(txt);
@@ -314,7 +320,8 @@ Java_com_offlineref_TessApi_nativeTessGetText(JNIEnv* env, jclass, jlong handle)
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_offlineref_TessApi_nativeTessEnd(JNIEnv*, jclass, jlong handle) {
-    TessResultCode api = (TessResultCode)(intptr_t)handle;
+    TessBaseAPI* api = (TessBaseAPI*)(intptr_t)handle;
+    if (!api) return;
     TessBaseAPIEnd(api);
     TessBaseAPIDelete(api);
 }
