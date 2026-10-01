@@ -280,7 +280,7 @@ class MainActivity : Activity() {
                 }
                 // Поиск по базе знаний: найдено -> отвечаем СТРОГО по тексту,
                 // ничего не найдено -> обычный режим (fallback, решение №5)
-                val chunks = KbDb.get(this@MainActivity).search(q, 2)
+                val chunks = KbDb.get(this@MainActivity).searchSafe(q, 2)
                 val useRag = chunks.isNotEmpty()
                 val sysForGen = if (useRag) RAG_SYSTEM else systemPrompt
                 val userForGen = if (useRag) buildRagUser(q, chunks) else q
