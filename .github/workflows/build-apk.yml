@@ -42,7 +42,8 @@ jobs:
       - name: Fetch tessdata
         run: |
           mkdir -p app/src/main/assets/tessdata
-          curl -sSL -o app/src/main/assets/tessdata/rus.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/rus.traineddata
+          curl -fSL --retry 3 -o app/src/main/assets/tessdata/rus.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/rus.traineddata
+          test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3861738"
           ls -la app/src/main/assets/tessdata/
 
       - name: Build
