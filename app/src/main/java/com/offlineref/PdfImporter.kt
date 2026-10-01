@@ -47,7 +47,7 @@ object PdfImporter {
             }
         }
         val tess = if (layerText.isBlank()) {
-            val t = com.google.tesseract.android.TessBaseAPI()
+            val t = com.googlecode.tesseract.android.TessBaseAPI()
             if (!t.init(context.filesDir.absolutePath, "rus")) null else t
         } else null
 
@@ -69,13 +69,16 @@ object PdfImporter {
                 var text = ""
                 if (layerText.isNotBlank()) {
                     text = pageTextFromLayer(layerText, i, renderer.pageCount)
-                } else if (tess != null) {
+                } else {
                     // OCR скана (tesseract, on-device)
-                    try {
-                        tess.setImage(bmp)
-                        text = tess.utF8Text ?: ""
-                        tess.clear()
-                    } catch (_: Throwable) { }
+                    val t = tess
+                    if (t != null) {
+                        try {
+                            t.setImage(bmp)
+                            text = t.utF8Text ?: ""
+                            t.clear()
+                        } catch (_: Throwable) { }
+                    }
                 }
                 page.close()
 
