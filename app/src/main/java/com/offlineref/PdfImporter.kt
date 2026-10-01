@@ -87,7 +87,7 @@ object PdfImporter {
                 }
             }
         } finally {
-            try { tess?.recycle() } catch (_: Throwable) { }
+            try { tess?.end() } catch (_: Throwable) { }   // tess-two API: end(), не recycle()
             renderer.close()
             pfd.close()
             tmp.delete()
