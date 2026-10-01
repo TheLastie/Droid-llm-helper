@@ -48,7 +48,7 @@ jobs:
           git fetch origin apk
           git checkout origin/apk -- rus.traineddata
           mv rus.traineddata app/src/main/assets/tessdata/rus.traineddata
-          test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3861738"
+          test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3661738"
           ls -la app/src/main/assets/tessdata/
 
       - name: Build
