@@ -77,6 +77,17 @@ class MainActivity : Activity() {
                     step("Модель: на месте (${ModelManager.MODEL_NAME})")
                     showChat()
                     runCpuBench()
+                    // Диагностика БД при старте: если базу снова снесёт,
+                    // увидим путь/размер/счётчики в первом же скрине
+                    Thread {
+                        try {
+                            val f = getDatabasePath("kb")
+                            val kb = KbDb.get(this@MainActivity)
+                            logBubble("база: " + f.absolutePath + ", " + f.length() + " байт, " + kb.stats())
+                        } catch (t: Throwable) {
+                            logBubble("база: ошибка диагностики " + (t.message ?: t.javaClass.simpleName))
+                        }
+                    }.start()
                     if (ModelManager.EXPECTED_SHA256.isBlank()) {
                         // Эталон ещё не вписан в код: считаем хэш и показываем,
                         // чтобы пользователь прислал его разработчику.
