@@ -32,9 +32,22 @@ FetchContent_MakeAvailable(llamacpp)
 # --- Tesseract 5.3.4 + Leptonica: собираем сами NDK 27 (16KB-страницы) ---
 # tess-two (2021) на Android 15/16 может не загрузиться (8KB-aligned .so).
 # Своя сборка: capi-интерфейс, статическая линковка в наш .so.
+# Кросс-сборка под Android: try_compile не должен ЛИНКОВАТЬ (иначе линкер
+# тянет чужой sysroot: crtbegin_dynamic.o ELF 40). Только компилируем.
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
 set(SW_BUILD OFF CACHE BOOL "" FORCE)
 set(BUILD_PROG OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
+# tesseract на Android требует cpu_features (NDK-compat)
+FetchContent_Declare(cpu_features
+    GIT_REPOSITORY https://github.com/google/cpu_features.git
+    GIT_TAG v0.9.0
+    GIT_SHALLOW TRUE)
+set(CPU_FEATURES_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(CPU_FEATURES_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(cpu_features)
 
 include(FetchContent)
 FetchContent_Declare(leptonica
