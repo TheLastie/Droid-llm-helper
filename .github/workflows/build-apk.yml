@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # для зеркалирования APK в ветку apk
     steps:
       - uses: actions/checkout@v4
 
@@ -55,3 +57,17 @@ jobs:
         with:
           name: OfflineRef-v${{ github.run_number }}
           path: app/build/outputs/apk/debug/OfflineRef-v${{ github.run_number }}-b1.apk
+
+      # Зеркалируем APK в ветку apk - запасной канал доставки (raw.githubusercontent
+      # доступен там, где artifacts-хранилище недоступно) + бэкап сборок
+      - name: Mirror APK to apk branch
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/OfflineRef-*.apk)
+          git config user.email "ci@offlineref.local"
+          git config user.name "ci"
+          git fetch origin apk 2>/dev/null && git checkout apk || git checkout --orphan apk
+          git rm -rf . 2>/dev/null || true
+          cp "$APK" OfflineRef-latest.apk
+          git add OfflineRef-latest.apk
+          git commit -m "APK build ${{ github.run_number }}" || true
+          git push origin apk
