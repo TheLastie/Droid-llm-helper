@@ -236,6 +236,16 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
     const float temp  = jtemp;
     std::string out;
 
+    // ШТАТНЫЙ sampler-chain llama.cpp: penalties (анти-заикание) + temp + dist.
+    // Заменяет ручной argmax/softmax - убирает артефакты "ПрПрП"/"Я ЯЯ",
+    // которые давало сэмплирование без штрафа за повторы.
+    llama_sampler* smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
+    llama_sampler_chain_add(smpl, llama_sampler_init_penalties(64, 1.10f, 0.00f, 1.05f));
+    llama_sampler_chain_add(smpl, llama_sampler_init_temp(temp));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist((uint32_t)clock_ms()));
+
+    llama_token last = 0;   // ВНЕ цикла: batch.token указывает на него
+                            // между итерациями (было UB с висячим указателем)
     llama_batch batch = llama_batch_get_one(tokens.data(), (int32_t)tokens.size());
     for (int i = 0; i < max; i++) {
         const bool mark = (i < 3) || (i % 32 == 0);
@@ -250,23 +260,22 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
             emit_log(env, "phase: decode " + std::to_string(i) + " done, " +
                           std::to_string(d1 - d0) + " ms");
         }
-        const float* logits = llama_get_logits_ith(g_ctx, batch.n_tokens - 1);
-        if (!logits) break;
-        llama_token next = sample_token(logits, n_vocab, temp);
-        if (llama_token_is_eog(g_model, next)) break;
+        last = llama_sampler_sample(smpl, g_ctx, -1);
+        llama_sampler_accept(smpl, last);
+        if (llama_token_is_eog(g_model, last)) break;
         char buf[64];
-        int32_t len = llama_token_to_piece(g_model, next, buf, (int32_t)sizeof(buf), 0, true);
+        int32_t len = llama_token_to_piece(g_model, last, buf, (int32_t)sizeof(buf), 0, true);
         if (len > 0) {
             out.append(buf, (size_t)len);
-            // стриминг: каждый токен сразу в UI (тот же JNI env, тот же поток)
             if (g_tokenMethod && g_listenerClass) {
                 jstring piece = env->NewStringUTF(std::string(buf, (size_t)len).c_str());
                 env->CallStaticVoidMethod(g_listenerClass, g_tokenMethod, piece);
                 env->DeleteLocalRef(piece);
             }
         }
-        batch = llama_batch_get_one(&next, 1);
+        batch = llama_batch_get_one(&last, 1);
     }
+    llama_sampler_free(smpl);
 
     return env->NewStringUTF(out.c_str());
 }
