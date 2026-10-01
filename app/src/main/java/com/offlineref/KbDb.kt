@@ -14,10 +14,11 @@ import android.net.Uri
 // не влезает в 60-секундный бюджет.
 
 class KbDb private constructor(private val appContext: Context) :
-    SQLiteOpenHelper(appContext, "kb", null, 2) {
+    SQLiteOpenHelper(appContext, "kb", null, 3) {
 
     data class Chunk(val docTitle: String, val text: String,
-                     val ordinal: Int = 0, val total: Int = 0)
+                     val ordinal: Int = 0, val total: Int = 0,
+                     val pageNo: Int = 0, val imgPath: String = "")
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE documents(id INTEGER PRIMARY KEY, title TEXT, added INTEGER)")
@@ -30,6 +31,12 @@ class KbDb private constructor(private val appContext: Context) :
     override fun onUpgrade(db: SQLiteDatabase, oldV: Int, newV: Int) {
         // v1->v2: удаляем FTS-таблицу, если она создавалась на прошивке с fts5
         try { db.execSQL("DROP TABLE IF EXISTS chunks_fts") } catch (_: Throwable) { }
+        // v2->v3: позиция страницы и путь к изображению страницы (B19)
+        if (oldV < 3) {
+            try { db.execSQL("ALTER TABLE chunks ADD COLUMN page_no INTEGER DEFAULT 0") } catch (_: Throwable) { }
+            try { db.execSQL("ALTER TABLE chunks ADD COLUMN img_path TEXT DEFAULT ''") } catch (_: Throwable) { }
+            try { db.execSQL("ALTER TABLE documents ADD COLUMN has_images INTEGER DEFAULT 0") } catch (_: Throwable) { }
+        }
     }
 
     fun countDocs(): Long {
@@ -48,8 +55,57 @@ class KbDb private constructor(private val appContext: Context) :
         val bytes = appContext.contentResolver.openInputStream(uri)
             ?.use { it.readBytes() }
             ?: throw IllegalStateException("не удалось открыть файл")
-        val text: String
+        // PDF -> постраничный импорт с изображениями (B19)
         if (bytes.size > 4 && bytes[0] == 0x25.toByte() && bytes[1] == 0x50.toByte()) {
+            PdfImporter.importPdf(appContext, bytes, fallbackTitle.substringAfterLast('/').substringAfterLast(':'))
+            return
+        }
+        importPlainText(bytes.toString(Charsets.UTF_8),
+            fallbackTitle.substringAfterLast('/').substringAfterLast(':'))
+    }
+
+    fun importPlainText(text: String, title: String) {
+        if (text.isBlank()) throw IllegalStateException("файл пустой или текст не извлекается")
+        val docId = createDocument(title)
+        addChunks(docId, chunkText(text), "", 0)
+    }
+
+    // ---------- API для PdfImporter ----------
+    fun createDocument(title: String): Long {
+        val cv = ContentValues()
+        cv.put("title", title)
+        cv.put("added", System.currentTimeMillis())
+        return writableDatabase.insert("documents", null, cv)
+    }
+
+    fun addChunks(docId: Long, texts: List<String>, imgPath: String, pageNo: Int) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            texts.forEachIndexed { i, ch ->
+                val ccv = ContentValues()
+                ccv.put("doc_id", docId)
+                ccv.put("ordinal", i)
+                ccv.put("text", ch)
+                ccv.put("page_no", pageNo)
+                ccv.put("img_path", imgPath)
+                db.insert("chunks", null, ccv)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    fun markHasImages(docId: Long) {
+        val cv = ContentValues()
+        cv.put("has_images", 1)
+        writableDatabase.update("documents", cv, "id=?", arrayOf(docId.toString()))
+    }
+
+    private fun importPdfOldPath(bytes: ByteArray, fallbackTitle: String) {
+        val text: String
+        if (true) {
             // PDF (магические байты "%P") - извлекаем текст через PdfBox
             text = try {
                 com.tom_roush.pdfbox.pdmodel.PDDocument.load(bytes.inputStream()).use { doc ->
