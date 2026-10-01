@@ -37,7 +37,7 @@ object PdfImporter {
             }
         } catch (_: Throwable) { }
 
-        // Tesseract: распаковываем rus.traineddata из assets при первом запуске
+        // Tesseract (собственная NDK27-сборка): распаковываем rus.traineddata
         val tessDataDir = File(context.filesDir, "tessdata")
         tessDataDir.mkdirs()
         val trained = File(tessDataDir, "rus.traineddata")
@@ -46,17 +46,11 @@ object PdfImporter {
                 trained.outputStream().use { output -> input.copyTo(output) }
             }
         }
-        // ДЕГРАДАЦИЯ ПОД 16KB-СТРАНИЦЫ: .so tess-two собраны в 2021 и могут не
-        // загрузиться на Android 15/16 (UnsatisfiedLinkError). В этом случае
-        // импорт НЕ падает: страницы-картинки и текстовый слой сохраняются,
-        // отключается только OCR. Если OCR нужен - tesseract пересобирают NDK 27.
-        val tess = if (layerText.isBlank()) {
+        val tessHandle: Long? = if (layerText.isBlank()) {
             try {
-                val t = com.googlecode.tesseract.android.TessBaseAPI()
-                if (!t.init(context.filesDir.absolutePath, "rus")) { t.end(); null } else t
-            } catch (t: Throwable) {
-                null
-            }
+                val h = TessApi.nativeTessInit(context.filesDir.absolutePath, "rus")
+                if (h == 0L) null else h
+            } catch (t: Throwable) { null }
         } else null
 
         try {
@@ -77,16 +71,14 @@ object PdfImporter {
                 var text = ""
                 if (layerText.isNotBlank()) {
                     text = pageTextFromLayer(layerText, i, renderer.pageCount)
-                } else {
+                } else if (tessHandle != null) {
                     // OCR скана (tesseract, on-device)
-                    val t = tess
-                    if (t != null) {
-                        try {
-                            t.setImage(bmp)
-                            text = t.utF8Text ?: ""
-                            t.clear()
-                        } catch (_: Throwable) { }
-                    }
+                    try {
+                        val px = ByteArray(w * h * 4)
+                        bmp.copyPixelsToBuffer(java.nio.ByteBuffer.wrap(px))
+                        TessApi.nativeTessSetImage(tessHandle, px, w, h)
+                        text = TessApi.nativeTessGetText(tessHandle)
+                    } catch (_: Throwable) { }
                 }
                 page.close()
 
@@ -95,7 +87,7 @@ object PdfImporter {
                 }
             }
         } finally {
-            try { tess?.end() } catch (_: Throwable) { }   // tess-two API: end(), не recycle()
+            try { tessHandle?.let { TessApi.nativeTessEnd(it) } } catch (_: Throwable) { }
             renderer.close()
             pfd.close()
             tmp.delete()
