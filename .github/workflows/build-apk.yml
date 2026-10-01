@@ -37,6 +37,14 @@ jobs:
           tr -d '[:space:]' < debug.keystore.b64 | base64 -d > debug.keystore
           ls -la debug.keystore
 
+      # rus-данные tesseract: кладём в assets перед сборкой (CI скачивает быстро,
+      # в git 4 МБ не храним). Канал sandbox->GitHub для этого файла лежит.
+      - name: Fetch tessdata
+        run: |
+          mkdir -p app/src/main/assets/tessdata
+          curl -sSL -o app/src/main/assets/tessdata/rus.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/rus.traineddata
+          ls -la app/src/main/assets/tessdata/
+
       - name: Build
         run: gradle assembleDebug --stacktrace
 
