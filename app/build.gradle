@@ -77,8 +77,8 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     // Извлечение текста из PDF (offline, Java-порт PdfBox)
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
-    // OCR сканов на устройстве (русский, офлайн после инициализации)
-    implementation 'com.google.mlkit:text-recognition-russian:16.0.0'
+    // OCR сканов на устройстве (tesseract 4, русский; данные кладёт CI в assets)
+    implementation 'com.github.mahimrocky:Tesseract4Android:4.1.0'
     // Шаг 1 (B1): намеренно МИНИМУМ зависимостей. Compose/ONNX/llama.cpp
     // добавляем отдельными шагами, чтобы бисекция (правило 4.5) работала.
 }
