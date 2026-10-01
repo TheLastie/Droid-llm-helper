@@ -33,10 +33,23 @@ class KbDb private constructor(private val appContext: Context) :
     }
 
     fun import(uri: Uri, fallbackTitle: String) {
-        val text = appContext.contentResolver.openInputStream(uri)
-            ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+        val bytes = appContext.contentResolver.openInputStream(uri)
+            ?.use { it.readBytes() }
             ?: throw IllegalStateException("не удалось открыть файл")
-        if (text.isBlank()) throw IllegalStateException("файл пустой или не UTF-8 текст")
+        val text: String
+        if (bytes.size > 4 && bytes[0] == 0x25.toByte() && bytes[1] == 0x50.toByte()) {
+            // PDF (магические байты "%P") - извлекаем текст через PdfBox
+            text = try {
+                com.tom_roush.pdfbox.pdmodel.PDDocument.load(bytes.inputStream()).use { doc ->
+                    com.tom_roush.pdfbox.text.PDFTextStripper().getText(doc)
+                }
+            } catch (t: Throwable) {
+                throw IllegalStateException("не удалось извлечь текст из PDF")
+            }
+        } else {
+            text = bytes.toString(Charsets.UTF_8)
+        }
+        if (text.isBlank()) throw IllegalStateException("файл пустой или текст не извлекается")
         val title = fallbackTitle.substringAfterLast('/').substringAfterLast(':')
         val db = writableDatabase
         db.beginTransaction()
