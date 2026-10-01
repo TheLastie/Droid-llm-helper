@@ -34,6 +34,7 @@ class MainActivity : Activity() {
     private lateinit var chatBox: LinearLayout
     private lateinit var input: EditText
     private lateinit var buttonSend: Button
+    private lateinit var buttonKb: Button
 
     private val mm by lazy { ModelManager(this) }
 
@@ -134,6 +135,11 @@ class MainActivity : Activity() {
             isVisible = false
             setOnClickListener { onSend() }
         }
+        buttonKb = Button(this).apply {
+            text = "База знаний"
+            isVisible = false
+            setOnClickListener { startActivity(Intent(this@MainActivity, KnowledgeActivity::class.java)) }
+        }
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.BOTTOM
@@ -147,6 +153,7 @@ class MainActivity : Activity() {
             addView(progressLine)
             addView(progressBar)
             addView(buttonDownload)
+            addView(buttonKb)
             addView(chatScroll)
             addView(inputRow)
         }
@@ -157,6 +164,7 @@ class MainActivity : Activity() {
         chatScroll.isVisible = true
         input.isVisible = true
         buttonSend.isVisible = true
+        buttonKb.isVisible = true
         bubble("OfflineRef готов. Работаю полностью офлайн. " +
                 "Задайте вопрос - ответ до ~60 секунд.", assistant = true)
     }
@@ -224,6 +232,25 @@ class MainActivity : Activity() {
         }.start()
     }
 
+    // RAG-режим: ответ СТРОГО по найденным фрагментам (антиигаллюцинации)
+    private val RAG_SYSTEM = "Ты офлайн-справочник. Ответь, используя ТОЛЬКО текст " +
+            "раздела [ИСТОЧНИКИ]. Если ответа там нет - скажи: в базе нет данных " +
+            "по этому вопросу. Кратко, до 5 предложений, на русском."
+
+    private fun buildRagUser(question: String, chunks: List<KbDb.Chunk>): String {
+        val sb = StringBuilder("[ИСТОЧНИКИ]\n")
+        var budget = 1800   // знаков ~ лимит промпта под 60-секундный бюджет
+        chunks.forEachIndexed { i, ch ->
+            val t = ch.text
+            if (t.length > budget) return@forEachIndexed
+            sb.append(i + 1).append(". (").append(ch.docTitle).append(")\n")
+                .append(t).append("\n\n")
+            budget -= t.length
+        }
+        sb.append("ВОПРОС: ").append(question)
+        return sb.toString()
+    }
+
     // ---------- Чат ----------
 
     private fun onSend() {
@@ -251,6 +278,14 @@ class MainActivity : Activity() {
                         return@Thread
                     }
                 }
+                // Поиск по базе знаний: найдено -> отвечаем СТРОГО по тексту,
+                // ничего не найдено -> обычный режим (fallback, решение №5)
+                val chunks = KbDb.get(this@MainActivity).search(q, 2)
+                val useRag = chunks.isNotEmpty()
+                val sysForGen = if (useRag) RAG_SYSTEM else systemPrompt
+                val userForGen = if (useRag) buildRagUser(q, chunks) else q
+                val maxForGen = if (useRag) 150 else 200
+
                 val t0 = System.currentTimeMillis()
                 val sb = StringBuilder()
                 gotFirstToken = false
@@ -271,13 +306,19 @@ class MainActivity : Activity() {
                     sb.append(piece)
                     runOnUiThread { thinking.text = "OfflineRef: " + sb.toString() }
                 }
-                val ans = LlamaEngine.nativeGenerate(systemPrompt, q, 200, 0.1f)
+                val ans = LlamaEngine.nativeGenerate(sysForGen, userForGen, maxForGen, 0.1f)
                 LlamaEngine.tokenSink = null
                 val dt = (System.currentTimeMillis() - t0) / 1000
                 val finalText = if (ans.startsWith("ERR:"))
                     "OfflineRef: ошибка генерации $ans"
-                else
-                    "OfflineRef: " + sb.toString() + "\n\n(" + dt + " с)"
+                else {
+                    val src = if (useRag)
+                        chunks.map { it.docTitle }.distinct().joinToString(", ")
+                    else null
+                    "OfflineRef: " + sb.toString() +
+                            (if (src != null) "\n\nИсточники: " + src else "\n\n(общие знания модели)") +
+                            "\n(" + dt + " с)"
+                }
                 runOnUiThread { thinking.text = finalText }
             } catch (t: Throwable) {
                 runOnUiThread { thinking.text = "OfflineRef: исключение " + (t.message ?: t.javaClass.simpleName) }
