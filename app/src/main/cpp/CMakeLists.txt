@@ -3,6 +3,14 @@ project(llamajni CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# КЛЮЧЕВОЙ ФИКС (диагноз: "decode 0 зависает" при ЛЮБОЙ модели/потоках):
+# AGP собирает debug-APK с CMAKE_BUILD_TYPE=Debug, а NDK для Debug ставит
+# -O0 = БЕЗ оптимизации. Весь ggml/llama.cpp работал в 20-50 раз медленнее
+# положенного. На том же чипе у Alibaba 3.8B давала первый токен за 3.9 с.
+# Принудительно добавляем -O3 в обе конфигурации.
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O3")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O3")
+
 # llama.cpp b4353 - версия, которую llama.rn обкатал на тысячах Android.
 # v0.5.0 отвергнута опытом: первый decode не завершался 200+ сек даже
 # на холодном телефоне при 1 потоке (подозрение на новый memory-sched).
