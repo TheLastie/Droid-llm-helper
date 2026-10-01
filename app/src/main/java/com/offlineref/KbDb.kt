@@ -31,6 +31,12 @@ class KbDb private constructor(private val appContext: Context) :
         try { db.execSQL("DROP TABLE IF EXISTS chunks_fts") } catch (_: Throwable) { }
     }
 
+    fun countDocs(): Long {
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM documents", null).use { c ->
+            return if (c.moveToFirst()) c.getLong(0) else 0
+        }
+    }
+
     fun hasDocuments(): Boolean {
         readableDatabase.rawQuery("SELECT COUNT(*) FROM documents", null).use { c ->
             return c.moveToFirst() && c.getLong(0) > 0
