@@ -43,6 +43,11 @@ class KnowledgeActivity : Activity() {
         refresh()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::listBox.isInitialized && ::db.isInitialized) refresh()
+    }
+
     private fun refresh() {
         listBox.removeAllViews()
         val docs = db.listDocs()
