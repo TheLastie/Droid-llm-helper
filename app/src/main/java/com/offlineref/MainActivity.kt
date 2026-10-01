@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.view.Gravity
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -35,6 +36,7 @@ class MainActivity : Activity() {
     private lateinit var input: EditText
     private lateinit var buttonSend: Button
     private lateinit var buttonKb: Button
+    private lateinit var verbatimCheck: CheckBox
 
     private val mm by lazy { ModelManager(this) }
 
@@ -140,6 +142,11 @@ class MainActivity : Activity() {
             isVisible = false
             setOnClickListener { startActivity(Intent(this@MainActivity, KnowledgeActivity::class.java)) }
         }
+        verbatimCheck = CheckBox(this).apply {
+            text = "Дословно (текст из базы без модели, мгновенно)"
+            isVisible = false
+            setPadding(48, 0, 48, 0)
+        }
         val inputRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.BOTTOM
@@ -154,6 +161,7 @@ class MainActivity : Activity() {
             addView(progressBar)
             addView(buttonDownload)
             addView(buttonKb)
+            addView(verbatimCheck)
             addView(chatScroll)
             addView(inputRow)
         }
@@ -165,6 +173,7 @@ class MainActivity : Activity() {
         input.isVisible = true
         buttonSend.isVisible = true
         buttonKb.isVisible = true
+        verbatimCheck.isVisible = true
         bubble("OfflineRef готов. Работаю полностью офлайн. " +
                 "Задайте вопрос - ответ до ~60 секунд.", assistant = true)
     }
@@ -208,6 +217,28 @@ class MainActivity : Activity() {
     // Быстрый тест здоровья CPU: 2 секунты однопоточного целочисленного
     // цикла. Ориентир для mid-range 2024+: 1.5-3.0 (млрд итераций).
     // Значительно ниже = частоты зажаты (энергосбережение/троттлинг/режим сна).
+    // Дословный режим: поиск + вывод сырого текста, LLM не участвует
+    private fun onVerbatim(q: String) {
+        Thread {
+            val kb = KbDb.get(this@MainActivity)
+            logBubble("дословно: документов в базе = " + kb.countDocs())
+            val chunks = kb.searchSafe(q, 3)
+            if (chunks.isEmpty()) {
+                runOnUiThread {
+                    bubble("OfflineRef: в базе нет текста по этому запросу", assistant = true)
+                }
+                return@Thread
+            }
+            logBubble("дословно: найдено фрагментов = " + chunks.size)
+            runOnUiThread {
+                for (ch in chunks) {
+                    bubble("📄 " + ch.docTitle + ", фрагмент " + (ch.ordinal + 1) +
+                            " из " + ch.total + ":\n\n" + ch.text.trim(), assistant = true)
+                }
+            }
+        }.start()
+    }
+
     private fun runCpuBench() {
         Thread {
           try {
@@ -235,7 +266,9 @@ class MainActivity : Activity() {
     // RAG-режим: ответ СТРОГО по найденным фрагментам (антиигаллюцинации)
     private val RAG_SYSTEM = "Ты офлайн-справочник. Ответь, используя ТОЛЬКО текст " +
             "раздела [ИСТОЧНИКИ]. Если ответа там нет - скажи: в базе нет данных " +
-            "по этому вопросу. Кратко, до 5 предложений, на русском."
+            "по этому вопросу. Если опираешься на конкретное место - процитируй " +
+            "его дословно в кавычках и укажи номер источника [1] или [2]. " +
+            "Кратко, до 5 предложений, на русском."
 
     private fun buildRagUser(question: String, chunks: List<KbDb.Chunk>): String {
         val sb = StringBuilder("[ИСТОЧНИКИ]\n")
@@ -254,8 +287,17 @@ class MainActivity : Activity() {
     // ---------- Чат ----------
 
     private fun onSend() {
-        val q = input.text.toString().trim()
+        var q = input.text.toString().trim()
         if (q.isEmpty() || generating) return
+        // Режим "Дословно": галочка или префикс "!" - показываем сырой текст
+        // из базы БЕЗ модели: мгновенно, без галлюцинаций, без лимита 60 с
+        if (verbatimCheck.isChecked || q.startsWith("!")) {
+            if (q.startsWith("!")) q = q.drop(1).trim()
+            if (q.isEmpty()) return
+            bubble("Вы: " + q + "  [дословно]", assistant = false)
+            onVerbatim(q)
+            return
+        }
         input.setText("")
         bubble("Вы: $q", assistant = false)
         generating = true
@@ -321,7 +363,8 @@ class MainActivity : Activity() {
                     "OfflineRef: ошибка генерации $ans"
                 else {
                     val src = if (useRag)
-                        chunks.map { it.docTitle }.distinct().joinToString(", ")
+                        chunks.map { it.docTitle + " (фрагмент " + (it.ordinal + 1) + "/" + it.total + ")" }
+                            .distinct().joinToString(", ")
                     else null
                     "OfflineRef: " + sb.toString() +
                             (if (src != null) "\n\nИсточники: " + src else "\n\n(общие знания модели)") +
