@@ -103,42 +103,6 @@ class KbDb private constructor(private val appContext: Context) :
         writableDatabase.update("documents", cv, "id=?", arrayOf(docId.toString()))
     }
 
-    private fun importPdfOldPath(bytes: ByteArray, fallbackTitle: String) {
-        val text: String
-        if (true) {
-            // PDF (магические байты "%P") - извлекаем текст через PdfBox
-            text = try {
-                com.tom_roush.pdfbox.pdmodel.PDDocument.load(bytes.inputStream()).use { doc ->
-                    com.tom_roush.pdfbox.text.PDFTextStripper().getText(doc)
-                }
-            } catch (t: Throwable) {
-                throw IllegalStateException("не удалось извлечь текст из PDF")
-            }
-        } else {
-            text = bytes.toString(Charsets.UTF_8)
-        }
-        if (text.isBlank()) throw IllegalStateException("файл пустой или текст не извлекается")
-        val title = fallbackTitle.substringAfterLast('/').substringAfterLast(':')
-        val db = writableDatabase
-        db.beginTransaction()
-        try {
-            val cv = ContentValues()
-            cv.put("title", title)
-            cv.put("added", System.currentTimeMillis())
-            val docId = db.insert("documents", null, cv)
-            chunkText(text).forEachIndexed { i, ch ->
-                val ccv = ContentValues()
-                ccv.put("doc_id", docId)
-                ccv.put("ordinal", i)
-                ccv.put("text", ch)
-                db.insert("chunks", null, ccv)
-            }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
-        }
-    }
-
     private fun chunkText(text: String): List<String> {
         val paragraphs = text.split(Regex("\\n\\s*\\n"))
         val chunks = mutableListOf<String>()
@@ -159,7 +123,8 @@ class KbDb private constructor(private val appContext: Context) :
         return chunks
     }
 
-    private data class Row(val docId: Long, val title: String, val ordinal: Int, val text: String)
+    private data class Row(val docId: Long, val title: String, val ordinal: Int,
+                           val text: String, val pageNo: Int, val imgPath: String)
 
     private fun search(query: String, k: Int): List<Chunk> {
         return try {
@@ -171,18 +136,20 @@ class KbDb private constructor(private val appContext: Context) :
             if (words.isEmpty()) return emptyList()
             val rows = mutableListOf<Row>()
             readableDatabase.rawQuery(
-                "SELECT c.doc_id, d.title, c.ordinal, c.text " +
+                "SELECT c.doc_id, d.title, c.ordinal, c.text, c.page_no, c.img_path " +
                 "FROM chunks c JOIN documents d ON d.id = c.doc_id", null)
                 .use { c ->
                     while (c.moveToNext())
-                        rows.add(Row(c.getLong(0), c.getString(1), c.getInt(2), c.getString(3)))
+                        rows.add(Row(c.getLong(0), c.getString(1), c.getInt(2), c.getString(3),
+                                     c.getInt(4), c.getString(5)))
                 }
             val totals = rows.groupingBy { it.docId }.eachCount()
             rows.map { row ->
                 val lower = row.text.lowercase()
                 var score = 0
                 for (w in words) if (lower.contains(w)) score++
-                score to Chunk(row.title, row.text, row.ordinal, totals[row.docId] ?: 0)
+                score to Chunk(row.title, row.text, row.ordinal, totals[row.docId] ?: 0,
+                               row.pageNo, row.imgPath)
             }.filter { it.first > 0 }
                 .sortedByDescending { it.first }
                 .take(k).map { it.second }
