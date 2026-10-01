@@ -16,7 +16,8 @@ import android.net.Uri
 class KbDb private constructor(private val appContext: Context) :
     SQLiteOpenHelper(appContext, "kb", null, 2) {
 
-    data class Chunk(val docTitle: String, val text: String)
+    data class Chunk(val docTitle: String, val text: String,
+                     val ordinal: Int = 0, val total: Int = 0)
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE documents(id INTEGER PRIMARY KEY, title TEXT, added INTEGER)")
@@ -102,27 +103,36 @@ class KbDb private constructor(private val appContext: Context) :
         return chunks
     }
 
-    fun search(query: String, k: Int = 2): List<Chunk> {
-        if (!hasDocuments()) return emptyList()
-        val words = query.lowercase()
-            .replace(Regex("[^a-zа-яё0-9 ]"), " ")
-            .split(Regex("\\s+"))
-            .filter { it.length >= 3 }
-        if (words.isEmpty()) return emptyList()
-        // скан чанков с подсчётом совпавших слов: база в десятки-сотни
-        // фрагментов -> миллисекунды, без модулей SQLite
-        val scored = mutableListOf<Pair<Int, Chunk>>()
-        readableDatabase.rawQuery(
-            "SELECT c.text, d.title FROM chunks c JOIN documents d ON d.id = c.doc_id", null)
-            .use { c ->
-                while (c.moveToNext()) {
-                    val lower = c.getString(0).lowercase()
-                    var score = 0
-                    for (w in words) if (lower.contains(w)) score++
-                    if (score > 0) scored.add(score to Chunk(c.getString(1), c.getString(0)))
+    private data class Row(val docId: Long, val title: String, val ordinal: Int, val text: String)
+
+    private fun search(query: String, k: Int): List<Chunk> {
+        return try {
+            if (!hasDocuments()) return emptyList()
+            val words = query.lowercase()
+                .replace(Regex("[^a-zа-яё0-9 ]"), " ")
+                .split(Regex("\\s+"))
+                .filter { it.length >= 3 }
+            if (words.isEmpty()) return emptyList()
+            val rows = mutableListOf<Row>()
+            readableDatabase.rawQuery(
+                "SELECT c.doc_id, d.title, c.ordinal, c.text " +
+                "FROM chunks c JOIN documents d ON d.id = c.doc_id", null)
+                .use { c ->
+                    while (c.moveToNext())
+                        rows.add(Row(c.getLong(0), c.getString(1), c.getInt(2), c.getString(3)))
                 }
-            }
-        return scored.sortedByDescending { it.first }.take(k).map { it.second }
+            val totals = rows.groupingBy { it.docId }.eachCount()
+            rows.map { row ->
+                val lower = row.text.lowercase()
+                var score = 0
+                for (w in words) if (lower.contains(w)) score++
+                score to Chunk(row.title, row.text, row.ordinal, totals[row.docId] ?: 0)
+            }.filter { it.first > 0 }
+                .sortedByDescending { it.first }
+                .take(k).map { it.second }
+        } catch (t: Throwable) {
+            emptyList()
+        }
     }
 
     fun searchSafe(query: String, k: Int = 2): List<Chunk> =
