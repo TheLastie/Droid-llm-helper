@@ -10,6 +10,9 @@
 
 #include "llama.h"
 
+// Tesseract C API (собственная сборка, ветка tess-ndk27)
+#include "tesseract/capi.h"
+
 // ШАГ 3b: полный JNI-мост к llama.cpp v0.5.0.
 // Сознательно без llama_sampler/common: вручную argmax/temperature -
 // меньше зависимостей от смены API между релизами.
@@ -279,3 +282,40 @@ Java_com_offlineref_LlamaEngine_nativeGenerate(JNIEnv* env, jclass,
 
     return env->NewStringUTF(out.c_str());
 }
+
+// ---------- OCR (tesseract capi) ----------
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_offlineref_TessApi_nativeTessInit(JNIEnv* env, jclass, jstring jpath, jstring jlang) {
+    const char* path = env->GetStringUTFChars(jpath, nullptr);
+    const char* lang = env->GetStringUTFChars(jlang, nullptr);
+    TessResultCode rc = TessBaseAPIInit3(TessBaseAPICreate(), path, lang);
+    env->ReleaseStringUTFChars(jpath, path);
+    env->ReleaseStringUTFChars(jlang, lang);
+    return (jlong)(intptr_t)rc; // TessResultCode - это указатель на TessBaseAPI
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_offlineref_TessApi_nativeTessSetImage(JNIEnv* env, jclass, jlong handle,
+                                               jbyteArray jpix, jint w, jint h) {
+    TessResultCode api = (TessResultCode)(intptr_t)handle;
+    jbyte* px = env->GetByteArrayElements(jpix, nullptr);
+    TessBaseAPISetImage(api, (const unsigned char*)px, w, h, 4, w * 4);
+    env->ReleaseByteArrayElements(jpix, px, JNI_ABORT);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_offlineref_TessApi_nativeTessGetText(JNIEnv* env, jclass, jlong handle) {
+    TessResultCode api = (TessResultCode)(intptr_t)handle;
+    char* txt = TessBaseAPIGetUTF8Text(api);
+    jstring out = txt ? env->NewStringUTF(txt) : env->NewStringUTF("");
+    if (txt) TessDeleteText(txt);
+    return out;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_offlineref_TessApi_nativeTessEnd(JNIEnv*, jclass, jlong handle) {
+    TessResultCode api = (TessResultCode)(intptr_t)handle;
+    TessBaseAPIEnd(api);
+    TessBaseAPIDelete(api);
+}
+
