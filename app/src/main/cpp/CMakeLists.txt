@@ -102,5 +102,7 @@ target_include_directories(llamajni PRIVATE
     ${llamacpp_SOURCE_DIR}/include
     ${llamacpp_SOURCE_DIR}/src
     ${tesseract_SOURCE_DIR}/include
-    ${leptonica_SOURCE_DIR}/src)
+    ${tesseract_BINARY_DIR}/include
+    ${leptonica_SOURCE_DIR}/src
+    ${leptonica_BINARY_DIR}/src)
 target_link_libraries(llamajni PRIVATE llama libtesseract leptonica android log)
