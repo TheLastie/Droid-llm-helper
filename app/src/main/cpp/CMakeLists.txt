@@ -40,14 +40,9 @@ set(SW_BUILD OFF CACHE BOOL "" FORCE)
 set(BUILD_PROG OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
-# tesseract на Android требует cpu_features (NDK-compat)
-FetchContent_Declare(cpu_features
-    GIT_REPOSITORY https://github.com/google/cpu_features.git
-    GIT_TAG v0.9.0
-    GIT_SHALLOW TRUE)
-set(CPU_FEATURES_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-set(CPU_FEATURES_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(cpu_features)
+# cpu_features НЕ тянем: его CMake разворачивает вложенную тест-сборку со
+# своим тулчейном (armv7 по умолчанию) и падает. Детекция CPU нам не нужна -
+# подкладываем пустой интерфейс под ожидаемый таргет (ниже).
 
 include(FetchContent)
 FetchContent_Declare(leptonica
