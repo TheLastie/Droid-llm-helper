@@ -60,6 +60,9 @@ endif()
 # tesseract штатно ищет Leptonica find_package-ом (его собственный Find-модуль,
 # который чужие in-tree таргеты не видит). Библиотека уже собрана в этом билде -
 # отключаем поиск и объявляем её найденной сами.
+# заголовки leptonica (<allheaders.h> без префикса) - глобально до tesseract
+include_directories(${leptonica_SOURCE_DIR}/src ${leptonica_BINARY_DIR}/src)
+
 set(CMAKE_DISABLE_FIND_PACKAGE_Leptonica TRUE)
 set(Leptonica_FOUND TRUE CACHE BOOL "" FORCE)
 set(LEPTONICA_FOUND TRUE CACHE BOOL "" FORCE)
