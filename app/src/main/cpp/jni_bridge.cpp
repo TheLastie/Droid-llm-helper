@@ -156,7 +156,11 @@ Java_com_offlineref_LlamaEngine_nativeLoadModel(JNIEnv* env, jclass,
 
     llama_context_params cparams = llama_context_default_params();
     cparams.n_ctx           = (uint32_t)n_ctx;
-    cparams.n_threads       = (int32_t)n_threads;
+    // РАЗДЕЛЬНЫЕ ПОТОКИ (замеры на устройстве):
+    // - генерация (n_threads): 2 - упирается в память, 4 потока НЕ дают
+    //   прироста (230 мс/токен и так, и так), но греют сильнее;
+    // - промпт (n_threads_batch): 4 - вычислительно-ёмкий, 25 с -> 14 с.
+    cparams.n_threads       = 2;
     cparams.n_threads_batch = (int32_t)n_threads;
     llama_context* ctx = llama_new_context_with_model(model, cparams);
     long long t2 = clock_ms();
