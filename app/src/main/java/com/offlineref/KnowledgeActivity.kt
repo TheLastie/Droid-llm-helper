@@ -32,11 +32,24 @@ class KnowledgeActivity : Activity() {
             text = "+ Импортировать документ"
             setOnClickListener { pickFile() }
         }
+        val restoreBtn = Button(this).apply {
+            text = "Восстановить из бэкапа"
+            setOnClickListener {
+                Thread {
+                    val n = db.restoreBackup()
+                    runOnUiThread {
+                        refresh()
+                        toast(if (n < 0) "Бэкап не найден" else "Восстановлено документов: " + n)
+                    }
+                }.start()
+            }
+        }
         listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(title)
             addView(importBtn)
+            addView(restoreBtn)
             addView(ScrollView(this@KnowledgeActivity).apply { addView(listBox) })
         }
         setContentView(root)
@@ -97,9 +110,11 @@ class KnowledgeActivity : Activity() {
         Thread {
             try {
                 db.import(uri, uri.lastPathSegment ?: "документ")
+                // автобэкап после каждого импорта - базу однажды уже молча снесло
+                val path = db.exportBackup()
                 runOnUiThread {
                     refresh()
-                    toast("Документ импортирован")
+                    toast("Документ импортирован, бэкап обновлён")
                 }
             } catch (t: Throwable) {
                 runOnUiThread { toast("Ошибка импорта: " + (t.message ?: t.javaClass.simpleName)) }
