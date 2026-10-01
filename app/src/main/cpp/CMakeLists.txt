@@ -79,6 +79,7 @@ file(WRITE "${CMAKE_BINARY_DIR}/shims/CpuFeaturesNdkCompatConfig.cmake"
 "set(CpuFeaturesNdkCompat_FOUND TRUE)\nif(NOT TARGET CpuFeaturesNdkCompat::cpu_features_ndk_compat AND TARGET cpu_features_ndk_compat)\n  add_library(CpuFeaturesNdkCompat::cpu_features_ndk_compat ALIAS cpu_features_ndk_compat)\nendif()\n")
 set(CpuFeaturesNdkCompat_DIR "${CMAKE_BINARY_DIR}/shims" CACHE PATH "" FORCE)
 set(BUILD_TRAINING_TOOLS OFF CACHE BOOL "" FORCE)
+set(BUILD_TESSERACT_BINARY OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ENABLE_LTO OFF CACHE BOOL "" FORCE)
 set(DISABLE_CURL ON CACHE BOOL "" FORCE)
@@ -98,4 +99,4 @@ target_include_directories(llamajni PRIVATE
     ${llamacpp_SOURCE_DIR}/src
     ${tesseract_SOURCE_DIR}/include
     ${leptonica_SOURCE_DIR}/src)
-target_link_libraries(llamajni PRIVATE llama tesseract leptonica android log)
+target_link_libraries(llamajni PRIVATE llama libtesseract leptonica android log)
