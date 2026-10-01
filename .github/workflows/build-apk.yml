@@ -42,7 +42,12 @@ jobs:
       - name: Fetch tessdata
         run: |
           mkdir -p app/src/main/assets/tessdata
-          curl -fSL --retry 3 -o app/src/main/assets/tessdata/rus.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/rus.traineddata
+          mkdir -p app/src/main/assets/tessdata
+          # берём из собственной ветки apk (ocr-deps положил туда) - внешний
+          # raw.githubusercontent с раннера периодически отваливается
+          git fetch origin apk
+          git checkout origin/apk -- rus.traineddata
+          mv rus.traineddata app/src/main/assets/tessdata/rus.traineddata
           test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3861738"
           ls -la app/src/main/assets/tessdata/
 
