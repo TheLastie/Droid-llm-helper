@@ -49,7 +49,7 @@ jobs:
                -H "Accept: application/vnd.github.raw" \
                -o app/src/main/assets/tessdata/rus.traineddata \
                "https://api.github.com/repos/${{ github.repository }}/contents/rus.traineddata?ref=apk"
-          test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3661738"
+          test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3861738"
           sha256sum app/src/main/assets/tessdata/rus.traineddata
 
       - name: Build
