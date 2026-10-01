@@ -43,13 +43,14 @@ jobs:
         run: |
           mkdir -p app/src/main/assets/tessdata
           mkdir -p app/src/main/assets/tessdata
-          # берём из собственной ветки apk (ocr-deps положил туда) - внешний
-          # raw.githubusercontent с раннера периодически отваливается
-          git fetch origin apk
-          git checkout origin/apk -- rus.traineddata
-          mv rus.traineddata app/src/main/assets/tessdata/rus.traineddata
+          # из собственной ветки apk (ocr-deps положил туда). НЕ git checkout:
+          # actions/checkout v4 - blobless-клон, файла другой ветки нет локально.
+          curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+               -H "Accept: application/vnd.github.raw" \
+               -o app/src/main/assets/tessdata/rus.traineddata \
+               "https://api.github.com/repos/${{ github.repository }}/contents/rus.traineddata?ref=apk"
           test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3661738"
-          ls -la app/src/main/assets/tessdata/
+          sha256sum app/src/main/assets/tessdata/rus.traineddata
 
       - name: Build
         run: gradle assembleDebug --stacktrace
