@@ -37,10 +37,19 @@ object PdfImporter {
             }
         } catch (_: Throwable) { }
 
-        val recognizer = if (layerText.isBlank())
-            com.google.mlkit.vision.text.TextRecognition.getClient(
-                com.google.mlkit.vision.text.russian.RussianTextRecognizerOptions.Builder().build())
-        else null
+        // Tesseract: распаковываем rus.traineddata из assets при первом запуске
+        val tessDataDir = File(context.filesDir, "tessdata")
+        tessDataDir.mkdirs()
+        val trained = File(tessDataDir, "rus.traineddata")
+        if (!trained.exists()) {
+            context.assets.open("tessdata/rus.traineddata").use { input ->
+                trained.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        val tess = if (layerText.isBlank()) {
+            val t = com.google.tesseract.android.TessBaseAPI()
+            if (!t.init(context.filesDir.absolutePath, "rus")) null else t
+        } else null
 
         try {
             for (i in 0 until renderer.pageCount) {
@@ -60,13 +69,12 @@ object PdfImporter {
                 var text = ""
                 if (layerText.isNotBlank()) {
                     text = pageTextFromLayer(layerText, i, renderer.pageCount)
-                } else {
-                    // OCR скана через ML Kit (русский, on-device)
+                } else if (tess != null) {
+                    // OCR скана (tesseract, on-device)
                     try {
-                        val image = com.google.mlkit.vision.common.InputImage.fromBitmap(bmp, 0)
-                        val task = recognizer!!.process(image)
-                        com.google.android.gms.tasks.Tasks.await(task)
-                        text = task.result?.text ?: ""
+                        tess.setImage(bmp)
+                        text = tess.utF8Text ?: ""
+                        tess.clear()
                     } catch (_: Throwable) { }
                 }
                 page.close()
@@ -76,6 +84,7 @@ object PdfImporter {
                 }
             }
         } finally {
+            try { tess?.recycle() } catch (_: Throwable) { }
             renderer.close()
             pfd.close()
             tmp.delete()
