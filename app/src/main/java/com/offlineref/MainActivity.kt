@@ -271,7 +271,7 @@ class MainActivity : Activity() {
                     sb.append(piece)
                     runOnUiThread { thinking.text = "OfflineRef: " + sb.toString() }
                 }
-                val ans = LlamaEngine.nativeGenerate(systemPrompt, q, 200, 0.2f)
+                val ans = LlamaEngine.nativeGenerate(systemPrompt, q, 200, 0.1f)
                 LlamaEngine.tokenSink = null
                 val dt = (System.currentTimeMillis() - t0) / 1000
                 val finalText = if (ans.startsWith("ERR:"))
