@@ -78,6 +78,15 @@ endif()
 file(WRITE "${CMAKE_BINARY_DIR}/shims/CpuFeaturesNdkCompatConfig.cmake"
 "set(CpuFeaturesNdkCompat_FOUND TRUE)\nif(NOT TARGET CpuFeaturesNdkCompat::cpu_features_ndk_compat AND TARGET cpu_features_ndk_compat)\n  add_library(CpuFeaturesNdkCompat::cpu_features_ndk_compat ALIAS cpu_features_ndk_compat)\nendif()\n")
 set(CpuFeaturesNdkCompat_DIR "${CMAKE_BINARY_DIR}/shims" CACHE PATH "" FORCE)
+# tesseract линкует CpuFeatures::ndk_compat; cpu_features может не создать его
+# (условия в его CMake). Детекция CPU-признаков нам не критична - пустой интерфейс.
+if(NOT TARGET CpuFeatures::ndk_compat)
+    if(TARGET ndk_compat)
+        add_library(CpuFeatures::ndk_compat ALIAS ndk_compat)
+    else()
+        add_library(CpuFeatures::ndk_compat INTERFACE IMPORTED)
+    endif()
+endif()
 set(BUILD_TRAINING_TOOLS OFF CACHE BOOL "" FORCE)
 set(BUILD_TESSERACT_BINARY OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
