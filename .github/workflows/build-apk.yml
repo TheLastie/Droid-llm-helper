@@ -2,7 +2,7 @@ name: build-apk
 
 on:
   push:
-    branches: [main]
+    branches: [main, tess-ndk27]
   workflow_dispatch:
 
 jobs:
@@ -81,7 +81,7 @@ jobs:
           git config user.email "ci@offlineref.local"
           git config user.name "ci"
           git fetch origin apk 2>/dev/null && git checkout apk || git checkout --orphan apk
-          cp "$APK" OfflineRef-latest.apk
-          git add OfflineRef-latest.apk
+          cp "$APK" OfflineRef-experimental.apk
+          git add OfflineRef-experimental.apk
           git commit -m "APK build ${{ github.run_number }}" || true
           git push origin apk
