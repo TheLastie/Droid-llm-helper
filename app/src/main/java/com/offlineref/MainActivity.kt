@@ -71,6 +71,14 @@ class MainActivity : Activity() {
                     step("Модель: на месте (${ModelManager.MODEL_NAME})")
                     showChat()
                     runCpuBench()
+                    if (ModelManager.EXPECTED_SHA256.isBlank()) {
+                        // Эталон ещё не вписан в код: считаем хэш и показываем,
+                        // чтобы пользователь прислал его разработчику.
+                        Thread {
+                            val h = mm.sha256(mm.modelFile)
+                            logBubble("модель sha256: " + h + " - пришлите разработчику")
+                        }.start()
+                    }
                 }
                 ModelManager.State.MISSING -> {
                     step("Модель: не найдена (${ModelManager.MODEL_NAME}, ~3 ГБ, один раз по сети)")
@@ -303,7 +311,7 @@ class MainActivity : Activity() {
         Thread {
             var lastPct = -1
             try {
-                mm.download { done, total ->
+                val hash = mm.download { done, total ->
                     val pct = if (total > 0) (done * 100 / total).toInt() else -1
                     if (pct != lastPct) {
                         lastPct = pct
