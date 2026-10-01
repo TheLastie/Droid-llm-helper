@@ -192,6 +192,34 @@ class MainActivity : Activity() {
                 "Задайте вопрос - ответ до ~60 секунд.", assistant = true)
     }
 
+    // Кнопка "📷 стр. N" -> страница книги на весь экран
+    private fun addPageButton(docTitle: String, pageNo: Int, imgPath: String) {
+        runOnUiThread {
+            val btn = Button(this).apply {
+                text = "📷 " + docTitle + ", стр. " + pageNo + " (показать страницу)"
+                setOnClickListener { showPageImage(imgPath) }
+            }
+            chatBox.addView(btn)
+            chatScroll.post { chatScroll.fullScroll(ScrollView.FOCUS_DOWN) }
+        }
+    }
+
+    private fun showPageImage(imgPath: String) {
+        val bmp = android.graphics.BitmapFactory.decodeFile(imgPath) ?: return
+        val dialog = android.app.Dialog(this)
+        val img = android.widget.ImageView(this).apply {
+            setImageBitmap(bmp)
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(0xFF000000.toInt())
+            setOnClickListener { dialog.dismiss() }
+        }
+        dialog.setContentView(img)
+        dialog.window?.setLayout(
+            android.view.WindowManager.LayoutParams.MATCH_PARENT,
+            android.view.WindowManager.LayoutParams.MATCH_PARENT)
+        dialog.show()
+    }
+
     private fun logBubble(text: String) {
         // ВСЕГДА с UI-потока: вызывается и из logSink, и из рабочих потоков.
         // Прямой addView с чужого потока = CalledFromWrongThreadException
@@ -247,7 +275,12 @@ class MainActivity : Activity() {
             runOnUiThread {
                 for (ch in chunks) {
                     bubble("📄 " + ch.docTitle + ", фрагмент " + (ch.ordinal + 1) +
-                            " из " + ch.total + ":\n\n" + ch.text.trim(), assistant = true)
+                            " из " + ch.total +
+                            (if (ch.pageNo > 0) ", стр. " + ch.pageNo else "") +
+                            ":\n\n" + ch.text.trim(), assistant = true)
+                    if (ch.imgPath.isNotEmpty() && ch.pageNo > 0) {
+                        addPageButton(ch.docTitle, ch.pageNo, ch.imgPath)
+                    }
                 }
             }
         }.start()
@@ -384,7 +417,18 @@ class MainActivity : Activity() {
                             (if (src != null) "\n\nИсточники: " + src else "\n\n(общие знания модели)") +
                             "\n(" + dt + " с)"
                 }
-                runOnUiThread { thinking.text = finalText }
+                runOnUiThread {
+                    thinking.text = finalText
+                    if (useRag) {
+                        val seen = mutableSetOf<String>()
+                        for (ch in chunks) {
+                            if (ch.imgPath.isNotEmpty() && ch.pageNo > 0 &&
+                                seen.add(ch.docTitle + ch.pageNo)) {
+                                addPageButton(ch.docTitle, ch.pageNo, ch.imgPath)
+                            }
+                        }
+                    }
+                }
             } catch (t: Throwable) {
                 runOnUiThread { thinking.text = "OfflineRef: исключение " + (t.message ?: t.javaClass.simpleName) }
             } finally {
