@@ -16,10 +16,13 @@ jobs:
           curl -sSL -o rus.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/rus.traineddata
           ls -la rus.traineddata
           sha256sum rus.traineddata
-      - name: Commit to apk branch
+      - name: Commit to apk branch (whole + parts for sandbox)
         run: |
           git config user.email "ci@offlineref.local"
           git config user.name "ci"
-          git add rus.traineddata
-          git commit -m "rus.traineddata for sandbox OCR (tessdata_fast)" || true
+          # целый файл - для CI-сборок; части по 600 КБ - sandbox забирает
+          # через Contents API (тот умирает на ответах >~1.7 МБ)
+          split -b 600000 -d rus.traineddata rus.part
+          git add rus.traineddata rus.part*
+          git commit -m "rus.traineddata + 600KB parts (sandbox channel is capped)" || true
           git push
