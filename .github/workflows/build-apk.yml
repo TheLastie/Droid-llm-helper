@@ -74,7 +74,6 @@ jobs:
           git config user.email "ci@offlineref.local"
           git config user.name "ci"
           git fetch origin apk 2>/dev/null && git checkout apk || git checkout --orphan apk
-          git rm -rf . 2>/dev/null || true
           cp "$APK" OfflineRef-latest.apk
           git add OfflineRef-latest.apk
           git commit -m "APK build ${{ github.run_number }}" || true
