@@ -22,8 +22,8 @@ android {
         applicationId "com.offlineref"
         minSdk 26
         targetSdk 34
-        versionCode 28
-        versionName "0.16.1"
+        versionCode 29
+        versionName "0.17.0-tess27"
         ndk { abiFilters "arm64-v8a" }   // правило 2: только наш ABI, -30 МБ
         externalNativeBuild {
             cmake {
@@ -77,8 +77,7 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     // Извлечение текста из PDF (offline, Java-порт PdfBox)
     implementation 'com.tom-roush:pdfbox-android:2.0.27.0'
-    // OCR сканов на устройстве (tesseract 4, русский; данные кладёт CI в assets)
-    implementation 'com.rmtheis:tess-two:9.1.0'
+    // OCR: tesseract собираем сами из исходников (ветка tess-ndk27)
     // Шаг 1 (B1): намеренно МИНИМУМ зависимостей. Compose/ONNX/llama.cpp
     // добавляем отдельными шагами, чтобы бисекция (правило 4.5) работала.
 }
