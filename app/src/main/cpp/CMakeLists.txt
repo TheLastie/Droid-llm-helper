@@ -62,10 +62,13 @@ FetchContent_MakeAvailable(leptonica)
 if(NOT TARGET Leptonica::leptonica AND TARGET leptonica)
     add_library(Leptonica::leptonica ALIAS leptonica)
 endif()
-file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/shims")
-file(WRITE "${CMAKE_BINARY_DIR}/shims/LeptonicaConfig.cmake"
-"set(Leptonica_FOUND TRUE)\nset(LEPTONICA_FOUND TRUE)\nif(NOT TARGET Leptonica::leptonica AND TARGET leptonica)\n  add_library(Leptonica::leptonica ALIAS leptonica)\nendif()\n")
-set(Leptonica_DIR "${CMAKE_BINARY_DIR}/shims" CACHE PATH "" FORCE)
+# tesseract штатно ищет Leptonica find_package-ом (его собственный Find-модуль,
+# который чужие in-tree таргеты не видит). Библиотека уже собрана в этом билде -
+# отключаем поиск и объявляем её найденной сами.
+set(CMAKE_DISABLE_FIND_PACKAGE_Leptonica TRUE)
+set(Leptonica_FOUND TRUE CACHE BOOL "" FORCE)
+set(LEPTONICA_FOUND TRUE CACHE BOOL "" FORCE)
+set(Leptonica_VERSION "1.84.1" CACHE STRING "" FORCE)
 
 # То же для CpuFeaturesNdkCompat (cpu_features уже собран in-tree; в v0.9.0
 # таргет ndk_compat + алиас с именем пакета)
