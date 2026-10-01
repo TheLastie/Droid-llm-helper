@@ -161,6 +161,85 @@ class KbDb private constructor(private val appContext: Context) :
         }
     }
 
+    // ---------- бэкап / восстановление (JSON во внешней папке приложения) ----------
+
+    fun stats(): String {
+        val docs = countDocs()
+        var chunks = 0L
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM chunks", null).use { c ->
+            if (c.moveToFirst()) chunks = c.getLong(0)
+        }
+        return docs.toString() + " документов, " + chunks + " фрагментов"
+    }
+
+    fun exportBackup(): String {
+        val arr = org.json.JSONArray()
+        readableDatabase.rawQuery(
+            "SELECT id, title FROM documents ORDER BY id", null).use { dc ->
+            while (dc.moveToNext()) {
+                val docObj = org.json.JSONObject()
+                docObj.put("title", dc.getString(1))
+                val chunksArr = org.json.JSONArray()
+                readableDatabase.rawQuery(
+                    "SELECT text FROM chunks WHERE doc_id=? ORDER BY ordinal",
+                    arrayOf(dc.getLong(0).toString())).use { cc ->
+                    while (cc.moveToNext()) chunksArr.put(cc.getString(0))
+                }
+                docObj.put("chunks", chunksArr)
+                arr.put(docObj)
+            }
+        }
+        val dir = appContext.getExternalFilesDir("backups") ?: throw IllegalStateException("нет папки backups")
+        dir.mkdirs()
+        val f = java.io.File(dir, "kb_backup.json")
+        f.writeText(arr.toString())
+        return f.absolutePath
+    }
+
+    // Восстановление: дополняет базу (не дублируя уже существующие документы)
+    fun restoreBackup(): Int {
+        val dir = appContext.getExternalFilesDir("backups") ?: return -1
+        val f = java.io.File(dir, "kb_backup.json")
+        if (!f.exists()) return -1
+        val arr = org.json.JSONArray(f.readText())
+        val existing = mutableSetOf<String>()
+        readableDatabase.rawQuery("SELECT title FROM documents", null).use { c ->
+            while (c.moveToNext()) existing.add(c.getString(0))
+        }
+        var restored = 0
+        for (i in 0 until arr.length()) {
+            val docObj = arr.getJSONObject(i)
+            val title = docObj.getString("title")
+            if (title in existing) continue
+            val chunksArr = docObj.getJSONArray("chunks")
+            val texts = (0 until chunksArr.length()).map { chunksArr.getString(it) }
+            insertDocWithChunks(title, texts)
+            restored++
+        }
+        return restored
+    }
+
+    private fun insertDocWithChunks(title: String, texts: List<String>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val cv = ContentValues()
+            cv.put("title", title)
+            cv.put("added", System.currentTimeMillis())
+            val docId = db.insert("documents", null, cv)
+            texts.forEachIndexed { i, ch ->
+                val ccv = ContentValues()
+                ccv.put("doc_id", docId)
+                ccv.put("ordinal", i)
+                ccv.put("text", ch)
+                db.insert("chunks", null, ccv)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
     companion object {
         @Volatile private var instance: KbDb? = null
         fun get(context: Context): KbDb =
