@@ -103,17 +103,24 @@ class KbDb private constructor(private val appContext: Context) :
             .split(Regex("\\s+"))
             .filter { it.length >= 3 }
         if (words.isEmpty()) return emptyList()
-        val match = words.joinToString(" OR ") { "\"" + it + "\"" }
-        val sql = ("SELECT c.text, d.title FROM chunks_fts f " +
-                "JOIN chunks c ON c.id = f.rowid " +
-                "JOIN documents d ON d.id = c.doc_id " +
-                "WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT ?")
-        val out = mutableListOf<Chunk>()
-        readableDatabase.rawQuery(sql, arrayOf(match, k.toString())).use { c ->
-            while (c.moveToNext()) out.add(Chunk(c.getString(1), c.getString(0)))
-        }
-        return out
+        // скан чанков с подсчётом совпавших слов: база в десятки-сотни
+        // фрагментов -> миллисекунды, без модулей SQLite
+        val scored = mutableListOf<Pair<Int, Chunk>>()
+        readableDatabase.rawQuery(
+            "SELECT c.text, d.title FROM chunks c JOIN documents d ON d.id = c.doc_id", null)
+            .use { c ->
+                while (c.moveToNext()) {
+                    val lower = c.getString(0).lowercase()
+                    var score = 0
+                    for (w in words) if (lower.contains(w)) score++
+                    if (score > 0) scored.add(score to Chunk(c.getString(1), c.getString(0)))
+                }
+            }
+        return scored.sortedByDescending { it.first }.take(k).map { it.second }
     }
+
+    fun searchSafe(query: String, k: Int = 2): List<Chunk> =
+        try { search(query, k) } catch (t: Throwable) { emptyList() }
 
     fun listDocs(): List<Pair<Long, String>> {
         val out = mutableListOf<Pair<Long, String>>()
