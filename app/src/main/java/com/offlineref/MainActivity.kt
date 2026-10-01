@@ -280,7 +280,15 @@ class MainActivity : Activity() {
                 }
                 // Поиск по базе знаний: найдено -> отвечаем СТРОГО по тексту,
                 // ничего не найдено -> обычный режим (fallback, решение №5)
-                val chunks = KbDb.get(this@MainActivity).searchSafe(q, 2)
+                // Диагностика видна в чате: почему поиск не сработал - очевидно.
+                val kb = KbDb.get(this@MainActivity)
+                logBubble("поиск: документов в базе = " + kb.countDocs())
+                val chunks = kb.searchSafe(q, 2)
+                if (chunks.isEmpty())
+                    logBubble("поиск: совпадений нет -> общий режим")
+                else
+                    logBubble("поиск: фрагментов = " + chunks.size + ", документы: " +
+                            chunks.map { it.docTitle }.distinct().joinToString(", "))
                 val useRag = chunks.isNotEmpty()
                 val sysForGen = if (useRag) RAG_SYSTEM else systemPrompt
                 val userForGen = if (useRag) buildRagUser(q, chunks) else q
