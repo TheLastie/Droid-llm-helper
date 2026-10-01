@@ -1,0 +1,25 @@
+name: ocr-deps
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: apk
+      - name: Download rus.traineddata (fast on runner)
+        run: |
+          curl -sSL -o rus.traineddata https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/rus.traineddata
+          ls -la rus.traineddata
+          sha256sum rus.traineddata
+      - name: Commit to apk branch
+        run: |
+          git config user.email "ci@offlineref.local"
+          git config user.name "ci"
+          git add rus.traineddata
+          git commit -m "rus.traineddata for sandbox OCR (tessdata_fast)" || true
+          git push
