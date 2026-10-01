@@ -46,9 +46,17 @@ object PdfImporter {
                 trained.outputStream().use { output -> input.copyTo(output) }
             }
         }
+        // ДЕГРАДАЦИЯ ПОД 16KB-СТРАНИЦЫ: .so tess-two собраны в 2021 и могут не
+        // загрузиться на Android 15/16 (UnsatisfiedLinkError). В этом случае
+        // импорт НЕ падает: страницы-картинки и текстовый слой сохраняются,
+        // отключается только OCR. Если OCR нужен - tesseract пересобирают NDK 27.
         val tess = if (layerText.isBlank()) {
-            val t = com.googlecode.tesseract.android.TessBaseAPI()
-            if (!t.init(context.filesDir.absolutePath, "rus")) null else t
+            try {
+                val t = com.googlecode.tesseract.android.TessBaseAPI()
+                if (!t.init(context.filesDir.absolutePath, "rus")) { t.end(); null } else t
+            } catch (t: Throwable) {
+                null
+            }
         } else null
 
         try {
