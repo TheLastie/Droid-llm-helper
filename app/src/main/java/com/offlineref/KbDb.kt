@@ -13,8 +13,8 @@ import android.net.Uri
 // стоит ~160 мс/токен, русский ~2.5 знака/токен -> большой контекст
 // не влезает в 60-секундный бюджет.
 
-class KbDb private constructor(context: Context) :
-    SQLiteOpenHelper(context, "kb", null, 1) {
+class KbDb private constructor(private val appContext: Context) :
+    SQLiteOpenHelper(appContext, "kb", null, 1) {
 
     data class Chunk(val docTitle: String, val text: String)
 
@@ -33,7 +33,7 @@ class KbDb private constructor(context: Context) :
     }
 
     fun import(uri: Uri, fallbackTitle: String) {
-        val text = context.contentResolver.openInputStream(uri)
+        val text = appContext.contentResolver.openInputStream(uri)
             ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
             ?: throw IllegalStateException("не удалось открыть файл")
         if (text.isBlank()) throw IllegalStateException("файл пустой или не UTF-8 текст")
