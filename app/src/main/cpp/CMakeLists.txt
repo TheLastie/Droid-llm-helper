@@ -56,7 +56,25 @@ FetchContent_Declare(leptonica
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(leptonica)
 
-set(Leptonica_DIR "${leptonica_BINARY_DIR}" CACHE PATH "" FORCE)
+# tesseract ищет Leptonica через find_package(CONFIG), а библиотека уже
+# собрана в этом же билде (in-tree таргет "leptonica"). Подсовываем шим:
+# конфиг без include() чужих Targets + алиас под ожидаемое имя.
+if(NOT TARGET Leptonica::leptonica AND TARGET leptonica)
+    add_library(Leptonica::leptonica ALIAS leptonica)
+endif()
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/shims")
+file(WRITE "${CMAKE_BINARY_DIR}/shims/LeptonicaConfig.cmake"
+"set(Leptonica_FOUND TRUE)\nset(LEPTONICA_FOUND TRUE)\nif(NOT TARGET Leptonica::leptonica AND TARGET leptonica)\n  add_library(Leptonica::leptonica ALIAS leptonica)\nendif()\n")
+set(Leptonica_DIR "${CMAKE_BINARY_DIR}/shims" CACHE PATH "" FORCE)
+
+# То же для CpuFeaturesNdkCompat (cpu_features уже собран in-tree; в v0.9.0
+# таргет ndk_compat + алиас с именем пакета)
+if(NOT TARGET CpuFeaturesNdkCompat::cpu_features_ndk_compat AND TARGET cpu_features_ndk_compat)
+    add_library(CpuFeaturesNdkCompat::cpu_features_ndk_compat ALIAS cpu_features_ndk_compat)
+endif()
+file(WRITE "${CMAKE_BINARY_DIR}/shims/CpuFeaturesNdkCompatConfig.cmake"
+"set(CpuFeaturesNdkCompat_FOUND TRUE)\nif(NOT TARGET CpuFeaturesNdkCompat::cpu_features_ndk_compat AND TARGET cpu_features_ndk_compat)\n  add_library(CpuFeaturesNdkCompat::cpu_features_ndk_compat ALIAS cpu_features_ndk_compat)\nendif()\n")
+set(CpuFeaturesNdkCompat_DIR "${CMAKE_BINARY_DIR}/shims" CACHE PATH "" FORCE)
 set(BUILD_TRAINING_TOOLS OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ENABLE_LTO OFF CACHE BOOL "" FORCE)
