@@ -51,12 +51,11 @@ class MainActivity : Activity() {
     @Volatile private var generating = false
     @Volatile private var gotFirstToken = false
 
-    private val systemPrompt = "Ты - офлайн-справочник. Правила:\n" +
-            "1. Отвечай по существу, простым языком, не более 6 предложений.\n" +
-            "2. Если вопрос про здоровье, безопасность или право - предупреди, " +
-            "что это ориентировочная информация, а не замена специалисту.\n" +
-            "3. Если не знаешь ответа достоверно - честно скажи об этом.\n" +
-            "4. Отвечай на русском."
+    // Компактен намеренно: русский токенизируется ~2-3 символа/токен,
+    // каждый десяток токенов промпта = ~2 с ожидания на этом чипе.
+    private val systemPrompt = "Ты офлайн-справочник. Отвечай кратко (до 6 предложений), " +
+            "простым языком, на русском. Если не знаешь - так и скажи. " +
+            "По вопросам здоровья/безопасности напомни, что это не замена специалисту."
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -210,7 +209,7 @@ class MainActivity : Activity() {
                 iters += 1_000_000
                 if (System.nanoTime() >= deadline) break
             }
-            logBubble("CPU bench: %.2f Г-итераций/2с (норма 1.5-3.0)".format(iters / 1e9))
+            logBubble("CPU bench: %.2f Г-итераций/2с (интерпретатор; норма 0.1-0.5)".format(iters / 1e9))
           } catch (t: Throwable) {
             logBubble("CPU bench failed: " + (t.message ?: t.javaClass.simpleName))
           }
@@ -317,6 +316,8 @@ class MainActivity : Activity() {
                     }
                 }
                 runOnUiThread {
+                    if (ModelManager.EXPECTED_SHA256.isBlank())
+                        logBubble("модель sha256: " + hash + " - пришлите разработчику")
                     step("Модель скачана и проверена (sha256 совпал с эталоном)")
                     buttonDownload.isVisible = false
                     progressBar.isVisible = false
