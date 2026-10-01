@@ -199,10 +199,16 @@ class MainActivity : Activity() {
             val t0 = System.nanoTime()
             var x = 123456789L
             var iters = 0L
-            while (System.nanoTime() - t0 < 2_000_000_000L) {
-                x = x * 1103515245L + 12345L
-                if (x < 0) x = -x
-                iters++
+            val deadline = t0 + 2_000_000_000L
+            while (true) {
+                var k = 0
+                while (k < 1_000_000) {
+                    x = x * 1103515245L + 12345L
+                    if (x < 0) x = -x
+                    k++
+                }
+                iters += 1_000_000
+                if (System.nanoTime() >= deadline) break
             }
             logBubble("CPU bench: %.2f Г-итераций/2с (норма 1.5-3.0)".format(iters / 1e9))
           } catch (t: Throwable) {
