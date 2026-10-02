@@ -232,6 +232,61 @@ class KbDb private constructor(private val appContext: Context) :
             "(SELECT MAX(id) FROM documents GROUP BY title)")
     }
 
+    // извлекает страницы книг из assets один раз (флаг .extracted)
+    private fun ensurePagesExtracted() {
+        val dir = java.io.File(appContext.filesDir, "pages")
+        val flag = java.io.File(dir, ".extracted")
+        if (flag.exists()) return
+        dir.mkdirs()
+        appContext.assets.open("book_pages.zip").use { input ->
+            java.util.zip.ZipInputStream(input).use { zis ->
+                var e = zis.nextEntry
+                while (e != null) {
+                    if (!e.isDirectory && e.name.endsWith(".jpg")) {
+                        java.io.File(dir, e.name.substringAfterLast('/')).writeBytes(zis.readBytes())
+                    }
+                    zis.closeEntry()
+                    e = zis.nextEntry
+                }
+            }
+        }
+        flag.writeText("ok")
+    }
+
+    private fun packChunks(pieces: List<String>): List<String> {
+        val chunks = mutableListOf<String>()
+        val sb = StringBuilder()
+        val target = 550
+        for (clean in pieces) {
+            if (clean.isEmpty()) continue
+            if (sb.isNotEmpty() && sb.length + clean.length > target) {
+                chunks.add(sb.toString())
+                val last = sb.toString().substringAfterLast('\n').trim()
+                sb.clear()
+                if (last.isNotEmpty() && last.length < 200) sb.append(last).append('\n')
+            }
+            sb.append(clean).append('\n')
+        }
+        if (sb.isNotBlank()) chunks.add(sb.toString().trim())
+        return chunks
+    }
+
+    // импорт OCR-текста с метками [стр. N]: фрагменты привязываются к страницам-картинкам
+    private fun importWithPages(text: String, title: String) {
+        ensurePagesExtracted()
+        val docId = createDocument(title)
+        val mr = Regex("^\\[стр\\. (\\d+)\\]\\s*")
+        for (sec in text.split("\\n\\n")) {
+            val m = mr.find(sec.trim()) ?: continue
+            val pageNo = m.groupValues[1].toInt()
+            val body = sec.trim().substring(m.range.last + 1).trim()
+            if (body.isEmpty()) continue
+            val img = java.io.File(appContext.filesDir, "pages/" + "page_%04d.jpg".format(pageNo))
+            val chunks = packChunks(hardSplit(body, 550))
+            addChunks(docId, chunks, if (img.exists()) img.absolutePath else "", pageNo)
+        }
+    }
+
     fun clearAll() {
         val db = writableDatabase
         db.beginTransaction()
@@ -259,7 +314,9 @@ class KbDb private constructor(private val appContext: Context) :
                             !name.contains("база_полная")) {
                             val text = zis.readBytes().toString(Charsets.UTF_8)
                             if (text.isNotBlank()) {
-                                importPlainText(text, name.substringAfterLast('/'))
+                                val title = name.substringAfterLast('/')
+                                if (text.contains("[стр. ")) importWithPages(text, title)
+                                else importPlainText(text, title)
                                 count++
                             }
                         }
@@ -352,7 +409,7 @@ class KbDb private constructor(private val appContext: Context) :
     }
 
     companion object {
-        const val KB_ASSET_VERSION = 2
+        const val KB_ASSET_VERSION = 3
         @Volatile var lastDiag: ((String) -> Unit)? = null
 
         @Volatile private var instance: KbDb? = null
