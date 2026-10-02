@@ -209,6 +209,29 @@ class KbDb private constructor(private val appContext: Context) :
     // При пустой базе распаковываем и импортируем сами - пользователь в поле
     // не должен ничего распаковывать и импортировать вручную. Плюс самолечение:
     // если базу когда-нибудь снова снесёт, при следующем старте она восстановится.
+    // диагностика, видимая в чате (вызывается и из PdfImporter)
+    fun logDiag(msg: String) {
+        android.util.Log.i("OfflineRef", msg)
+        lastDiag?.invoke(msg)
+    }
+
+    fun chunkCount(docId: Long): Long {
+        readableDatabase.rawQuery("SELECT COUNT(*) FROM chunks WHERE doc_id=?",
+            arrayOf(docId.toString())).use { c ->
+            return if (c.moveToFirst()) c.getLong(0) else 0
+        }
+    }
+
+    // удаляет пустые (оборванные импорты) и дубли по названию (оставляет новейший)
+    fun cleanupOrphans() {
+        val db = writableDatabase
+        db.execSQL("DELETE FROM documents WHERE id IN " +
+            "(SELECT d.id FROM documents d LEFT JOIN chunks c ON c.doc_id=d.id " +
+            "GROUP BY d.id HAVING COUNT(c.id)=0)")
+        db.execSQL("DELETE FROM documents WHERE id NOT IN " +
+            "(SELECT MAX(id) FROM documents GROUP BY title)")
+    }
+
     fun clearAll() {
         val db = writableDatabase
         db.beginTransaction()
@@ -330,6 +353,7 @@ class KbDb private constructor(private val appContext: Context) :
 
     companion object {
         const val KB_ASSET_VERSION = 2
+        @Volatile var lastDiag: ((String) -> Unit)? = null
 
         @Volatile private var instance: KbDb? = null
         fun get(context: Context): KbDb =
