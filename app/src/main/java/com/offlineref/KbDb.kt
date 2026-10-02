@@ -209,8 +209,6 @@ class KbDb private constructor(private val appContext: Context) :
     // При пустой базе распаковываем и импортируем сами - пользователь в поле
     // не должен ничего распаковывать и импортировать вручную. Плюс самолечение:
     // если базу когда-нибудь снова снесёт, при следующем старте она восстановится.
-    companion object { const val KB_ASSET_VERSION = 2 }
-
     fun clearAll() {
         val db = writableDatabase
         db.beginTransaction()
@@ -331,6 +329,8 @@ class KbDb private constructor(private val appContext: Context) :
     }
 
     companion object {
+        const val KB_ASSET_VERSION = 2
+
         @Volatile private var instance: KbDb? = null
         fun get(context: Context): KbDb =
             instance ?: synchronized(this) {
