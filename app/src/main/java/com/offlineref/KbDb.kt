@@ -186,6 +186,38 @@ class KbDb private constructor(private val appContext: Context) :
 
     // ---------- бэкап / восстановление (JSON во внешней папке приложения) ----------
 
+    // ПРЕДЗАГРУЗКА: база зашита в APK (assets/kb_base.zip, кладёт CI из ветки apk).
+    // При пустой базе распаковываем и импортируем сами - пользователь в поле
+    // не должен ничего распаковывать и импортировать вручную. Плюс самолечение:
+    // если базу когда-нибудь снова снесёт, при следующем старте она восстановится.
+    fun preloadFromAssets(): Boolean {
+        if (hasDocuments()) return false
+        return try {
+            var count = 0
+            appContext.assets.open("kb_base.zip").use { input ->
+                java.util.zip.ZipInputStream(input).use { zis ->
+                    var e = zis.nextEntry
+                    while (e != null) {
+                        val name = e.name
+                        if (!e.isDirectory && name.endsWith(".txt") &&
+                            !name.contains("база_полная")) {
+                            val text = zis.readBytes().toString(Charsets.UTF_8)
+                            if (text.isNotBlank()) {
+                                importPlainText(text, name.substringAfterLast('/'))
+                                count++
+                            }
+                        }
+                        zis.closeEntry()
+                        e = zis.nextEntry
+                    }
+                }
+            }
+            count > 0
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
     fun stats(): String {
         val docs = countDocs()
         var chunks = 0L
