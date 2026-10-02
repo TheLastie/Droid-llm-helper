@@ -62,6 +62,19 @@ jobs:
                "https://api.github.com/repos/${{ github.repository }}/contents/offlineref_kb_base.zip?ref=apk"
           ls -la app/src/main/assets/
 
+      # страницы книг из частей (api не принимает >~50MB за раз)
+      - name: Assemble book pages into assets
+        run: |
+          mkdir -p app/src/main/assets
+          for i in $(seq -w 0 14); do
+            curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                 -H "Accept: application/vnd.github.raw" \
+                 -o "/tmp/bp.part$i" \
+                 "https://api.github.com/repos/${{ github.repository }}/contents/bp.part$i?ref=apk"
+          done
+          cat $(ls /tmp/bp.part* | sort) > app/src/main/assets/book_pages.zip
+          ls -la app/src/main/assets/
+
       - name: Build
         run: gradle assembleDebug --stacktrace
 
