@@ -53,8 +53,11 @@ object PdfImporter {
         val tess = if (layerText.isBlank()) {
             try {
                 val t = com.googlecode.tesseract.android.TessBaseAPI()
-                if (!t.init(context.filesDir.absolutePath, "rus")) { t.end(); null } else t
+                val ok = t.init(context.filesDir.absolutePath, "rus")
+                KbDb.get(context).logDiag("pdf: tess init " + (if (ok) "ok" else "FAIL (OCR отключён)"))
+                if (!ok) { t.end(); null } else t
             } catch (t: Throwable) {
+                KbDb.get(context).logDiag("pdf: tess init исключение: " + (t.message ?: t.javaClass.simpleName))
                 null
             }
         } else null
@@ -85,7 +88,12 @@ object PdfImporter {
                             t.setImage(bmp)
                             text = t.utF8Text ?: ""
                             t.clear()
-                        } catch (_: Throwable) { }
+                            if (text.isBlank() && i < 3)
+                                KbDb.get(context).logDiag("pdf: стр." + (i + 1) + " - OCR вернул пустоту")
+                        } catch (e: Throwable) {
+                            if (i < 3)
+                                KbDb.get(context).logDiag("pdf: OCR стр." + (i + 1) + ": " + (e.message ?: e.javaClass.simpleName))
+                        }
                     }
                 }
                 page.close()
@@ -101,7 +109,9 @@ object PdfImporter {
             tmp.delete()
         }
         db.markHasImages(docId)
-        return Result(docId, rendererPageCountSafe(renderer))
+        val total = rendererPageCountSafe(renderer)
+        KbDb.get(context).logDiag("pdf: готово. страниц=" + total + ", фрагментов=" + db.chunkCount(docId))
+        return Result(docId, total)
     }
 
     private fun rendererPageCountSafe(r: PdfRenderer): Int = try { r.pageCount } catch (_: Throwable) { 0 }
