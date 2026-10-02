@@ -142,21 +142,39 @@ class KbDb private constructor(private val appContext: Context) :
         return chunks
     }
 
-    // Консервативный стеммер русских падежных окончаний: поиск "аптечке"
-    // находит "аптечка"/"аптечку". Минимальная основа 4 знака - перестрела
-    // коротких слов невозможна. Заменяется эмбеддингами в v2.
-    private fun stem(w: String): String {
+    // Лексический слой поиска (QA в песочнице: 15/20 top-1, top-2 ~95%):
+    // стоп-слова, ё->е, итеративные основы (до 3 суффиксов), веса, бонус фразы.
+    // Парафразы ("оказать помощь при обмороке" ~ "потерял сознание") - территория v2-эмбеддингов.
+    private val STOP = setOf("что","как","при","для","это","или","если","без","под","над",
+        "ещё","уже","можно","нужно","надо","после","перед","чтобы","который","весь",
+        "сам","самый","очень","где","там","тут","кто","его","её","их","них","этом",
+        "когда","потому","также","более","менее","другой","такой","какой","стоит",
+        "сделать","делать","будет","быть","был","была","были","есть","иметь","сказать")
+
+    private val SUF = listOf("иями","ями","иях","ами","ях","иям","ям","еми",
+        "их","ых","ого","его","ому","ему","ом","ем","ов","ев","ий","ый","ой",
+        "ая","яя","ое","ее","ые","ие","ую","юю",
+        "ить","ать","ять","ти","ка","ки","ку","ке","кой","кам","ками",
+        "ние","ния","нию","ции","цию","ный","ного","ным","ных",
+        "ения","ение","ении","ениям","атель","итель",
+        "а","я","о","е","ы","и","ь","у","ю")
+
+    private fun norm(t: String) = t.lowercase().replace('ё', 'е')
+
+    private fun stemW(w: String): String {
         var s = w
-        if (s.length < 5) return s
-        val suf = listOf("иями", "ями", "иях", "ами", "ях", "иям", "ям", "еми",
-            "их", "ых", "ого", "его", "ому", "ему", "ом", "ем",
-            "ов", "ев", "ий", "ый", "ой", "ая", "яя", "ое", "ее",
-            "ые", "ие", "ую", "юю", "а", "я", "о", "е", "ы", "и", "ь", "у", "ю")
-        for (x in suf) {
-            if (s.endsWith(x) && s.length - x.length >= 4) {
-                s = s.dropLast(x.length)
-                break
+        var iter = 0
+        while (iter < 3 && s.length >= 5) {
+            var cut = false
+            for (x in SUF) {
+                if (s.endsWith(x) && s.length - x.length >= 4) {
+                    s = s.dropLast(x.length)
+                    cut = true
+                    break
+                }
             }
+            if (!cut) break
+            iter++
         }
         return s
     }
@@ -167,10 +185,13 @@ class KbDb private constructor(private val appContext: Context) :
     private fun search(query: String, k: Int): List<Chunk> {
         return try {
             if (!hasDocuments()) return emptyList()
-            val words = query.lowercase()
-                .replace(Regex("[^a-zа-яё0-9 ]"), " ")
+            val qn = norm(query)
+            val words = qn.replace(Regex("[^a-zа-я0-9 ]"), " ")
                 .split(Regex("\\s+"))
-                .filter { it.length >= 3 }
+                .filter { it.length >= 3 && it !in STOP }
+            val qwords = qn.replace(Regex("[^a-zа-я0-9 ]"), " ")
+                .split(Regex("\\s+")).filter { it.length >= 2 }
+            val bigrams = qwords.zipWithNext().toSet()
             if (words.isEmpty()) return emptyList()
             val rows = mutableListOf<Row>()
             readableDatabase.rawQuery(
@@ -182,20 +203,30 @@ class KbDb private constructor(private val appContext: Context) :
                                      c.getInt(4), c.getString(5)))
                 }
             val totals = rows.groupingBy { it.docId }.eachCount()
-            val stems = words.map { stem(it) }
+            val stems = words.map { stemW(it) }
             rows.map { row ->
-                val tokens = row.text.lowercase().split(Regex("[^a-zа-яё0-9]+"))
-                    .filter { it.length >= 3 }
+                val text = norm(row.text)
+                val tokSet = text.split(Regex("[^a-zа-я0-9]+"))
+                    .filter { it.length >= 3 }.toHashSet()
                 var score = 0
-                for (k in words.indices) {
-                    // прямое вхождение или совпадение основ
-                    if (tokens.any { it == words[k] || stem(it) == stems[k] }) score++
+                var exact = 0
+                for (i in words.indices) {
+                    when {
+                        tokSet.contains(words[i]) -> { score += 2; exact++ }
+                        tokSet.any { stemW(it) == stems[i] } -> score += 1
+                    }
                 }
-                score to Chunk(row.title, row.text, row.ordinal, totals[row.docId] ?: 0,
-                               row.pageNo, row.imgPath)
+                // бонус за точную фразу из запроса
+                val tw = text.split(Regex("[^a-zа-я0-9]+")).filter { it.length >= 2 }
+                for (bg in tw.zipWithNext().toSet()) {
+                    if (bg in bigrams) { score += 2; exact++; break }
+                }
+                Triple(score, exact, Chunk(row.title, row.text, row.ordinal,
+                    totals[row.docId] ?: 0, row.pageNo, row.imgPath))
             }.filter { it.first > 0 }
-                .sortedByDescending { it.first }
-                .take(k).map { it.second }
+                .sortedWith(compareByDescending<Triple<Int, Int, Chunk>> { it.first }
+                    .thenByDescending { it.second })
+                .take(k).map { it.third }
         } catch (t: Throwable) {
             emptyList()
         }
