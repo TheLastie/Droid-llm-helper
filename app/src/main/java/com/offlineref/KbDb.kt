@@ -103,8 +103,27 @@ class KbDb private constructor(private val appContext: Context) :
         writableDatabase.update("documents", cv, "id=?", arrayOf(docId.toString()))
     }
 
+    // Режет абзац длиннее ~2x target по границам слов: секции OCR-книг
+    // (страница без пустых строк) иначе проходили целиком и ломали бюджет промпта.
+    private fun hardSplit(p: String, target: Int): List<String> {
+        if (p.length <= target * 2) return listOf(p)
+        val out = mutableListOf<String>()
+        var i = 0
+        while (i < p.length) {
+            var j = minOf(i + target, p.length)
+            if (j < p.length) {
+                val sp = p.lastIndexOf(' ', j)
+                if (sp > i + target / 2) j = sp
+            }
+            out.add(p.substring(i, j).trim())
+            i = j
+            while (i < p.length && p[i] == ' ') i++
+        }
+        return out.filter { it.isNotEmpty() }
+    }
+
     private fun chunkText(text: String): List<String> {
-        val paragraphs = text.split(Regex("\\n\\s*\\n"))
+        val paragraphs = text.split(Regex("\\n\\s*\\n")).flatMap { hardSplit(it.trim(), 550) }
         val chunks = mutableListOf<String>()
         val sb = StringBuilder()
         val target = 550
