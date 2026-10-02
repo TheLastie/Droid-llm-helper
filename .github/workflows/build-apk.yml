@@ -52,6 +52,16 @@ jobs:
           test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3861738"
           sha256sum app/src/main/assets/tessdata/rus.traineddata
 
+      # база знаний в assets (берём из собственной ветки apk)
+      - name: Fetch KB into assets
+        run: |
+          mkdir -p app/src/main/assets
+          curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+               -H "Accept: application/vnd.github.raw" \
+               -o app/src/main/assets/kb_base.zip \
+               "https://api.github.com/repos/${{ github.repository }}/contents/offlineref_kb_base.zip?ref=apk"
+          ls -la app/src/main/assets/
+
       - name: Build
         run: gradle assembleDebug --stacktrace
 
