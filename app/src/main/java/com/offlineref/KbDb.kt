@@ -142,6 +142,25 @@ class KbDb private constructor(private val appContext: Context) :
         return chunks
     }
 
+    // Консервативный стеммер русских падежных окончаний: поиск "аптечке"
+    // находит "аптечка"/"аптечку". Минимальная основа 4 знака - перестрела
+    // коротких слов невозможна. Заменяется эмбеддингами в v2.
+    private fun stem(w: String): String {
+        var s = w
+        if (s.length < 5) return s
+        val suf = listOf("иями", "ями", "иях", "ами", "ях", "иям", "ям", "еми",
+            "их", "ых", "ого", "его", "ому", "ему", "ом", "ем",
+            "ов", "ев", "ий", "ый", "ой", "ая", "яя", "ое", "ее",
+            "ые", "ие", "ую", "юю", "а", "я", "о", "е", "ы", "и", "ь", "у", "ю")
+        for (x in suf) {
+            if (s.endsWith(x) && s.length - x.length >= 4) {
+                s = s.dropLast(x.length)
+                break
+            }
+        }
+        return s
+    }
+
     private data class Row(val docId: Long, val title: String, val ordinal: Int,
                            val text: String, val pageNo: Int, val imgPath: String)
 
@@ -163,10 +182,15 @@ class KbDb private constructor(private val appContext: Context) :
                                      c.getInt(4), c.getString(5)))
                 }
             val totals = rows.groupingBy { it.docId }.eachCount()
+            val stems = words.map { stem(it) }
             rows.map { row ->
-                val lower = row.text.lowercase()
+                val tokens = row.text.lowercase().split(Regex("[^a-zа-яё0-9]+"))
+                    .filter { it.length >= 3 }
                 var score = 0
-                for (w in words) if (lower.contains(w)) score++
+                for (k in words.indices) {
+                    // прямое вхождение или совпадение основ
+                    if (tokens.any { it == words[k] || stem(it) == stems[k] }) score++
+                }
                 score to Chunk(row.title, row.text, row.ordinal, totals[row.docId] ?: 0,
                                row.pageNo, row.imgPath)
             }.filter { it.first > 0 }
