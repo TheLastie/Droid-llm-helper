@@ -66,7 +66,7 @@ object PdfImporter {
                 val scale = 1100f / page.width
                 val w = (page.width * scale).toInt().coerceAtLeast(1)
                 val h = (page.height * scale).toInt().coerceAtLeast(1)
-                val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565)
+                val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)  // tess-two требует ARGB_8888 (RGB_565 -> Unsupported pixel format)
                 page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
 
                 val imgFile = File(pagesDir, "${docId}_p${i + 1}.jpg")
