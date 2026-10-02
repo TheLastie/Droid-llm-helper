@@ -209,8 +209,24 @@ class KbDb private constructor(private val appContext: Context) :
     // При пустой базе распаковываем и импортируем сами - пользователь в поле
     // не должен ничего распаковывать и импортировать вручную. Плюс самолечение:
     // если базу когда-нибудь снова снесёт, при следующем старте она восстановится.
+    companion object { const val KB_ASSET_VERSION = 2 }
+
+    fun clearAll() {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.execSQL("DELETE FROM chunks")
+            db.execSQL("DELETE FROM documents")
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+    }
+
     fun preloadFromAssets(): Boolean {
-        if (hasDocuments()) return false
+        // версионирование: смена версии = пересоздание базы из assets,
+        // иначе фиксы чанкования не доходят до уже заполненной БД
+        val prefs = appContext.getSharedPreferences("kbmeta", Context.MODE_PRIVATE)
+        val cur = prefs.getInt("asset_version", 0)
+        if (hasDocuments() && cur == KB_ASSET_VERSION) return false
         return try {
             var count = 0
             appContext.assets.open("kb_base.zip").use { input ->
