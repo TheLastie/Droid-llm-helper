@@ -302,7 +302,9 @@ class KbDb private constructor(private val appContext: Context) :
         // иначе фиксы чанкования не доходят до уже заполненной БД
         val prefs = appContext.getSharedPreferences("kbmeta", Context.MODE_PRIVATE)
         val cur = prefs.getInt("asset_version", 0)
-        if (hasDocuments() && cur == KB_ASSET_VERSION) return false
+        // версия изменилась, а документы есть -> старая структура, чистим
+        if (hasDocuments() && cur != KB_ASSET_VERSION) clearAll()
+        else if (hasDocuments()) return false
         return try {
             var count = 0
             appContext.assets.open("kb_base.zip").use { input ->
@@ -325,7 +327,10 @@ class KbDb private constructor(private val appContext: Context) :
                     }
                 }
             }
-            count > 0
+            if (count > 0) {
+                prefs.edit().putInt("asset_version", KB_ASSET_VERSION).apply()
+                true
+            } else false
         } catch (t: Throwable) {
             false
         }
