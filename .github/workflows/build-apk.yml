@@ -85,13 +85,18 @@ jobs:
 
       # Зеркалируем APK в ветку apk - запасной канал доставки (raw.githubusercontent
       # доступен там, где artifacts-хранилище недоступно) + бэкап сборок
-      - name: Mirror APK to apk branch
+      - name: Mirror APK to apk branch (plumbing, no checkout)
         run: |
           APK=$(ls app/build/outputs/apk/debug/OfflineRef-*.apk)
           git config user.email "ci@offlineref.local"
           git config user.name "ci"
-          git fetch origin apk 2>/dev/null && git checkout apk || git checkout --orphan apk
-          cp "$APK" OfflineRef-latest.apk
-          git add OfflineRef-latest.apk
-          git commit -m "APK build ${{ github.run_number }}" || true
-          git push origin apk
+          # blobless-клон не тянет checkout чужой ветки с большими бинарниками.
+          # Собираем коммит через plumbing: новый блоб -> дерево на базе старого
+          # (с заменой только APK) -> коммит -> push. Остальные файлы ветки целы.
+          git fetch origin apk
+          BLOB=$(git hash-object -w "$APK")
+          OLDTREE=$(git rev-parse origin/apk^{tree})
+          NEWTREE=$(git mktree < <( (git ls-tree "$OLDTREE" | grep -v $'\t'OfflineRef-latest.apk; echo "100644 blob $BLOB"$'\t'OfflineRef-latest.apk) ))
+          NEW=$(git commit-tree "$NEWTREE" -p origin/apk -m "APK build ${{ github.run_number }}")
+          git push origin "$NEW:apk"
+          echo "mirrored: $NEW" 
