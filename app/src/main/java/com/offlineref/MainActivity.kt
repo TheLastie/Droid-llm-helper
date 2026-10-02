@@ -82,6 +82,9 @@ class MainActivity : Activity() {
                     Thread {
                         try {
                             val kb = KbDb.get(this@MainActivity)
+                            KbDb.lastDiag = { m -> logBubble(m) }
+                            // чистим пустые оборванные импорты и дубли по названию
+                            kb.cleanupOrphans()
                             // предзагрузка зашитой в APK базы (если БД пуста)
                             if (kb.preloadFromAssets())
                                 logBubble("база предзагружена из APK (первый запуск)")
