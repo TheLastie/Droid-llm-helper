@@ -324,11 +324,14 @@ class MainActivity : Activity() {
         val sb = StringBuilder("[ИСТОЧНИКИ]\n")
         var budget = 1800   // знаков ~ лимит промпта под 60-секундный бюджет
         chunks.forEachIndexed { i, ch ->
-            val t = ch.text
-            if (t.length > budget) return@forEachIndexed
+            // усечение до остатка бюджета вместо молчаливого пропуска -
+            // иначе длинные фрагменты исчезали из промпта целиком
+            var t = ch.text
+            if (t.length > budget) t = t.take(budget) + " …"
+            budget -= t.length
+            if (budget <= 0) return@forEachIndexed
             sb.append(i + 1).append(". (").append(ch.docTitle).append(")\n")
                 .append(t).append("\n\n")
-            budget -= t.length
         }
         sb.append("ВОПРОС: ").append(question)
         return sb.toString()
