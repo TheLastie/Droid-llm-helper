@@ -81,8 +81,11 @@ class MainActivity : Activity() {
                     // увидим путь/размер/счётчики в первом же скрине
                     Thread {
                         try {
-                            val f = getDatabasePath("kb")
                             val kb = KbDb.get(this@MainActivity)
+                            // предзагрузка зашитой в APK базы (если БД пуста)
+                            if (kb.preloadFromAssets())
+                                logBubble("база предзагружена из APK (первый запуск)")
+                            val f = getDatabasePath("kb")
                             logBubble("база: " + f.absolutePath + ", " + f.length() + " байт, " + kb.stats())
                         } catch (t: Throwable) {
                             logBubble("база: ошибка диагностики " + (t.message ?: t.javaClass.simpleName))
