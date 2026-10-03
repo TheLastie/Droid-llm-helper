@@ -75,6 +75,10 @@ jobs:
           cat $(ls /tmp/bp.part* | sort) > app/src/main/assets/book_pages.zip
           ls -la app/src/main/assets/
 
+      # СМОУК-ГЕЙТ: деградировавшая база (79 фрагментов) НЕ ДОЙДЁТ до APK
+      - name: Smoke test KB
+        run: python3 tools/smoke_test.py
+
       - name: Build
         run: gradle assembleDebug --stacktrace
 
@@ -98,9 +102,10 @@ jobs:
 
       # Зеркалируем APK в ветку apk - запасной канал доставки (raw.githubusercontent
       # доступен там, где artifacts-хранилище недоступно) + бэкап сборок
-      - name: Mirror APK to apk branch (plumbing, no checkout)
+      - name: Mirror APK to apk branch (plumbing + retry on race)
         run: |
           APK=$(ls app/build/outputs/apk/debug/OfflineRef-*.apk)
+          for attempt in 1 2 3; do
           git config user.email "ci@offlineref.local"
           git config user.name "ci"
           # blobless-клон не тянет checkout чужой ветки с большими бинарниками.
@@ -110,6 +115,12 @@ jobs:
           BLOB=$(git hash-object -w "$APK")
           OLDTREE=$(git rev-parse origin/apk^{tree})
           NEWTREE=$(git mktree < <( (git ls-tree "$OLDTREE" | grep -v $'\t'OfflineRef-latest.apk; echo "100644 blob $BLOB"$'\t'OfflineRef-latest.apk) ))
-          NEW=$(git commit-tree "$NEWTREE" -p origin/apk -m "APK build ${{ github.run_number }}")
-          git push origin "$NEW:apk"
-          echo "mirrored: $NEW" 
+          NEW=$(git commit-tree "$NEWTREE" -p $(git rev-parse origin/apk) -m "APK build ${{ github.run_number }}")
+          if git push origin "$NEW:apk"; then
+            echo "mirrored: $NEW"
+            break
+          else
+            echo "push rejected (гонка), обновляем и пробуем снова (попытка $attempt)"
+            git fetch origin apk
+          fi
+          done
