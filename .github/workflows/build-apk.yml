@@ -1,4 +1,4 @@
-name: build-apk
+name: build-apk-v2
 
 on:
   push:
