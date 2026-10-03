@@ -37,53 +37,6 @@ jobs:
           tr -d '[:space:]' < debug.keystore.b64 | base64 -d > debug.keystore
           ls -la debug.keystore
 
-      # rus-данные tesseract: кладём в assets перед сборкой (CI скачивает быстро,
-      # в git 4 МБ не храним). Канал sandbox->GitHub для этого файла лежит.
-      - name: Fetch tessdata
-        run: |
-          mkdir -p app/src/main/assets/tessdata
-          mkdir -p app/src/main/assets/tessdata
-          # из собственной ветки apk (ocr-deps положил туда). НЕ git checkout:
-          # actions/checkout v4 - blobless-клон, файла другой ветки нет локально.
-          curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-               -H "Accept: application/vnd.github.raw" \
-               -o app/src/main/assets/tessdata/rus.traineddata \
-               "https://api.github.com/repos/${{ github.repository }}/contents/rus.traineddata?ref=apk"
-          test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3861738"
-          sha256sum app/src/main/assets/tessdata/rus.traineddata
-
-      # база знаний в assets (берём из собственной ветки apk)
-      - name: Fetch KB into assets
-        run: |
-          mkdir -p app/src/main/assets
-          curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-               -H "Accept: application/vnd.github.raw" \
-               -o app/src/main/assets/kb_base.zip \
-               "https://api.github.com/repos/${{ github.repository }}/contents/offlineref_kb_base_v3.zip?ref=apk"
-          ls -la app/src/main/assets/
-
-      # страницы книг из частей (api не принимает >~50MB за раз)
-      - name: Assemble book pages into assets
-        run: |
-          mkdir -p app/src/main/assets
-          for i in $(seq -w 0 14); do
-            curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                 -H "Accept: application/vnd.github.raw" \
-                 -o "/tmp/bp.part$i" \
-                 "https://api.github.com/repos/${{ github.repository }}/contents/bp.part$i?ref=apk"
-          done
-          cat $(ls /tmp/bp.part* | sort) > app/src/main/assets/book_pages.zip
-          ls -la app/src/main/assets/
-
-      # СМОУК-ГЕЙТ: деградировавшая база (79 фрагментов) НЕ ДОЙДЁТ до APK
-      - name: Smoke test KB
-        run: python3 tools/smoke_test.py
-
-      # generateDebugAssets любит UP-TO-DATE - тогда в APK уходит КЭШ старой базы.
-      # Чистим задачу перед сборкой: свежие assets гарантированно попадут в APK.
-      - name: Invalidate assets task
-        run: gradle :app:generateDebugAssets --rerun-tasks -x preBuild -x preDebugBuild || true
-
       - name: Build
         run: gradle assembleDebug --rerun-tasks --stacktrace
 
