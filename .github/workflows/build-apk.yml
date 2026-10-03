@@ -79,8 +79,13 @@ jobs:
       - name: Smoke test KB
         run: python3 tools/smoke_test.py
 
+      # generateDebugAssets любит UP-TO-DATE - тогда в APK уходит КЭШ старой базы.
+      # Чистим задачу перед сборкой: свежие assets гарантированно попадут в APK.
+      - name: Invalidate assets task
+        run: gradle :app:generateDebugAssets --rerun-tasks -x preBuild -x preDebugBuild || true
+
       - name: Build
-        run: gradle assembleDebug --stacktrace
+        run: gradle assembleDebug --rerun-tasks --stacktrace
 
       # Правило 1: класс обязан быть в dex, иначе Kotlin не компилировался
       - name: Check MainActivity in dex
