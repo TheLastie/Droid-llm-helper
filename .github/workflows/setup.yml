@@ -45,13 +45,22 @@ jobs:
 
       - name: Assemble book pages
         run: |
+          mkdir -p /tmp/bp_parts
           for i in $(seq -w 0 14); do
-            curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-                 -H "Accept: application/vnd.github.raw" \
-                 -o "/tmp/bp.part$i" \
-                 "https://api.github.com/repos/${{ github.repository }}/contents/bp.part$i?ref=apk"
+            for attempt in 1 2 3; do
+              curl -fSL --retry 2 -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                   -H "Accept: application/vnd.github.raw" \
+                   -o "/tmp/bp_parts/bp.part$i" \
+                   "https://api.github.com/repos/${{ github.repository }}/contents/bp.part$i?ref=apk" \
+                && break || { echo "retry $i:$attempt"; sleep 2; }
+            done
           done
-          cat $(ls /tmp/bp.part* | sort) > app/src/main/assets/book_pages.zip
+          # проверка: все 15 частей скачаны и непустые
+          ls -la /tmp/bp_parts/
+          test $(ls /tmp/bp_parts/bp.part* | wc -l) -eq 15
+          cat $(ls /tmp/bp_parts/bp.part* | sort) > app/src/main/assets/book_pages.zip
+          test "$(stat -c%s app/src/main/assets/book_pages.zip)" -gt 30000000
+          echo "book_pages.zip: $(stat -c%s app/src/main/assets/book_pages.zip) bytes"
 
       - name: Smoke test KB
         run: python3 tools/smoke_test.py
