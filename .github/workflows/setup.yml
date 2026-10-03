@@ -1,0 +1,99 @@
+name: setup
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - run: $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;27.0.12077973" "cmake;3.22.1" > /dev/null
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10"
+
+      - name: Decode keystore
+        run: |
+          cd keystore
+          tr -d '[:space:]' < debug.keystore.b64 | base64 -d > debug.keystore
+
+      # v3-архив с метками [стр. N] - БЕЗ кэша: gradle не видит изменения внешних файлов
+      - name: Fetch KB v3 (no cache)
+        run: |
+          mkdir -p app/src/main/assets
+          rm -f app/src/main/assets/kb_base.zip
+          curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+               -H "Accept: application/vnd.github.raw" \
+               -o app/src/main/assets/kb_base.zip \
+               "https://api.github.com/repos/${{ github.repository }}/contents/offlineref_kb_base_v3.zip?ref=apk"
+          test "$(stat -c%s app/src/main/assets/kb_base.zip)" = "287711"
+
+      - name: Fetch tessdata
+        run: |
+          mkdir -p app/src/main/assets/tessdata
+          git fetch origin apk
+          git checkout origin/apk -- rus.traineddata
+          mv rus.traineddata app/src/main/assets/tessdata/rus.traineddata
+          test "$(stat -c%s app/src/main/assets/tessdata/rus.traineddata)" = "3861738"
+
+      - name: Assemble book pages
+        run: |
+          for i in $(seq -w 0 14); do
+            curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                 -H "Accept: application/vnd.github.raw" \
+                 -o "/tmp/bp.part$i" \
+                 "https://api.github.com/repos/${{ github.repository }}/contents/bp.part$i?ref=apk"
+          done
+          cat $(ls /tmp/bp.part* | sort) > app/src/main/assets/book_pages.zip
+
+      - name: Smoke test KB
+        run: python3 tools/smoke_test.py
+
+      - name: Invalidate assets task
+        run: gradle :app:generateDebugAssets --rerun-tasks -x preBuild -x preDebugBuild || true
+
+      - name: Build
+        run: gradle assembleDebug --rerun-tasks --stacktrace
+
+      - name: Check MainActivity in dex
+        run: python3 tools/check_dex.py
+
+      - name: Hash APK
+        run: sha256sum app/build/outputs/apk/debug/*.apk
+
+      - name: Rename with version
+        run: |
+          cd app/build/outputs/apk/debug
+          mv app-debug.apk OfflineRef-setup-b${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OfflineRef-setup-v${{ github.run_number }}
+          path: app/build/outputs/apk/debug/OfflineRef-setup-b${{ github.run_number }}.apk
+
+      - name: Mirror APK to apk branch (retry on race)
+        run: |
+          APK=$(ls app/build/outputs/apk/debug/OfflineRef-setup-*.apk)
+          git config user.email "ci@offlineref.local"
+          git config user.name "ci"
+          for attempt in 1 2 3; do
+            git fetch origin apk
+            BLOB=$(git hash-object -w "$APK")
+            OLDTREE=$(git rev-parse origin/apk^{tree})
+            NEWTREE=$(git mktree < <( (git ls-tree "$OLDTREE" | grep -v $'\t'OfflineRef-latest.apk; echo "100644 blob $BLOB"$'\t'OfflineRef-latest.apk) ))
+            NEW=$(git commit-tree "$NEWTREE" -p $(git rev-parse origin/apk) -m "APK setup build ${{ github.run_number }}")
+            if git push origin "$NEW:apk"; then
+              echo "mirrored: $NEW"
+              break
+            else
+              echo "retry $attempt"
+              git fetch origin apk
+            fi
+          done
