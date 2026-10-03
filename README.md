@@ -67,3 +67,6 @@ APK: ветка apk -> OfflineRef-latest.apk | База: offlineref_kb_base.zip
 - [ ] Хэш APK записан в релизы
 - [ ] Имя APK содержит версию
 - [ ] Изменения проверены в авиарежиме (если касается runtime)
+
+
+<!-- pipeline refresh 2026-10-03 18:28 -->
