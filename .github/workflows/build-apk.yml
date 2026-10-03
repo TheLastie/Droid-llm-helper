@@ -59,7 +59,7 @@ jobs:
           curl -fSL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
                -H "Accept: application/vnd.github.raw" \
                -o app/src/main/assets/kb_base.zip \
-               "https://api.github.com/repos/${{ github.repository }}/contents/offlineref_kb_base.zip?ref=apk"
+               "https://api.github.com/repos/${{ github.repository }}/contents/offlineref_kb_base_v3.zip?ref=apk"
           ls -la app/src/main/assets/
 
       # страницы книг из частей (api не принимает >~50MB за раз)
