@@ -64,6 +64,9 @@ jobs:
       - name: Smoke test KB
         run: python3 tools/smoke_test.py
 
+      - name: Self-test (5 layers)
+        run: python3 tools/selftest.py
+
       - name: Invalidate assets task
         run: gradle :app:generateDebugAssets --rerun-tasks -x preBuild -x preDebugBuild || true
 
