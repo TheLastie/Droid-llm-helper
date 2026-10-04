@@ -113,7 +113,14 @@ class KbDb private constructor(private val appContext: Context) :
             var j = minOf(i + target, p.length)
             if (j < p.length) {
                 val sp = p.lastIndexOf(' ', j)
-                if (sp > i + target / 2) j = sp
+                if (sp > i + target / 2) {
+                    j = sp
+                } else {
+                    // пробел слишком близко к началу - режем ПОСЛЕ границы слова
+                    val sp2 = p.indexOf(' ', j)
+                    if (sp2 > j && sp2 - i <= target + target / 2) j = sp2
+                    // иначе mid-word cut неизбежен (очень длинное слово) - оставляем как есть
+                }
             }
             out.add(p.substring(i, j).trim())
             i = j
