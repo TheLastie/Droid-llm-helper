@@ -42,7 +42,7 @@ def hard_split(p, target=550):
                 j = sp
             else:
                 sp2 = p.find(' ', j)
-                if sp2 > j and sp2 - i <= target + target // 2: j = sp2
+                if sp2 > j: j = sp2
         out.append(p[i:j].strip()); i = j
         while i < len(p) and p[i] == ' ': i += 1
     return [x for x in out if x]
