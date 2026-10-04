@@ -143,13 +143,13 @@ def main():
     for q, expect in QA:
         res = search(q, 2)
         if not res: continue
-        budget = 1800
+        budget = 1300
         total = 0
         for _, ch in res:
             t = ch["text"][:max(0, budget)]
             total += len(t)
             budget -= len(t)
-        if 200 < total <= 2000: rag_ok += 1
+        if 200 < total <= 1500: rag_ok += 1
     l3 = rag_ok >= len(QA) * 0.9
     report["layers"]["L3_rag_prompt"] = {"pass": l3, "ok": rag_ok, "total": len(QA)}
 
