@@ -380,7 +380,8 @@ class MainActivity : Activity() {
 
     private fun buildRagUser(question: String, chunks: List<KbDb.Chunk>): String {
         val sb = StringBuilder("[ИСТОЧНИКИ]\n")
-        var budget = 1800   // знаков ~ лимит промпта под 60-секундный бюджет
+        // бюджет 1300 знаков: промпт ~520 токенов -> decode 0 ~65 с (было 1800/867 ток/~113 с)
+        var budget = 1300   // знаков ~ лимит промпта под 60-секундный бюджет
         chunks.forEachIndexed { i, ch ->
             // усечение до остатка бюджета вместо молчаливого пропуска -
             // иначе длинные фрагменты исчезали из промпта целиком
