@@ -116,10 +116,11 @@ class KbDb private constructor(private val appContext: Context) :
                 if (sp > i + target / 2) {
                     j = sp
                 } else {
-                    // пробел слишком близко к началу - режем ПОСЛЕ границы слова
+                    // пробел слева близко - режем на следующем пробеле справа,
+                    // сколько бы ни пришлось пройти (фрагмент раздуется -
+                    // packChunks всё равно режет склейку до 550)
                     val sp2 = p.indexOf(' ', j)
-                    if (sp2 > j && sp2 - i <= target + target / 2) j = sp2
-                    // иначе mid-word cut неизбежен (очень длинное слово) - оставляем как есть
+                    if (sp2 > j) j = sp2
                 }
             }
             out.add(p.substring(i, j).trim())
