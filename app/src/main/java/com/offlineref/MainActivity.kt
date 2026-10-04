@@ -88,6 +88,7 @@ class MainActivity : Activity() {
                             // предзагрузка зашитой в APK базы (если БД пуста)
                             if (kb.preloadFromAssets())
                                 logBubble("база предзагружена из APK (первый запуск)")
+                            restoreChat()
                             val f = getDatabasePath("kb")
                             logBubble("база: " + f.absolutePath + ", " + f.length() + " байт, " + kb.stats())
                         } catch (t: Throwable) {
@@ -162,6 +163,19 @@ class MainActivity : Activity() {
             isVisible = false
             setOnClickListener { startActivity(Intent(this@MainActivity, KnowledgeActivity::class.java)) }
         }
+        val btnSave = Button(this).apply {
+            text = "Сохранить чат"
+            setOnClickListener { saveChat() }
+        }
+        val btnClear = Button(this).apply {
+            text = "Очистить"
+            setOnClickListener { chatBox.removeAllViews() }
+        }
+        val chatBtns = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(btnSave)
+            addView(btnClear)
+        }
         verbatimCheck = CheckBox(this).apply {
             text = "Дословно (текст из базы без модели, мгновенно)"
             isVisible = false
@@ -181,11 +195,52 @@ class MainActivity : Activity() {
             addView(progressBar)
             addView(buttonDownload)
             addView(buttonKb)
+            addView(chatBtns)
             addView(verbatimCheck)
             addView(chatScroll)
             addView(inputRow)
         }
         setContentView(root)
+    }
+
+    // ---------- сохранение чата ----------
+
+    private fun saveChat() {
+        Thread {
+            try {
+                val kb = KbDb.get(this@MainActivity)
+                val sb = StringBuilder()
+                for (i in 0 until chatBox.childCount) {
+                    val v = chatBox.getChildAt(i)
+                    if (v is TextView) {
+                        val txt = v.text.toString()
+                        if (txt.isNotBlank()) sb.append(txt).append("\n<<<>>>\n")
+                    }
+                }
+                val f = java.io.File(getExternalFilesDir(null), "chat_history.txt")
+                f.writeText(sb.toString())
+                runOnUiThread { logBubble("чат сохранён: " + f.absolutePath) }
+            } catch (t: Throwable) {
+                runOnUiThread { logBubble("ошибка сохранения: " + (t.message ?: t.javaClass.simpleName)) }
+            }
+        }.start()
+    }
+
+    private fun restoreChat() {
+        Thread {
+            try {
+                val f = java.io.File(getExternalFilesDir(null), "chat_history.txt")
+                if (!f.exists()) return@Thread
+                val text = f.readText()
+                if (text.isBlank()) return@Thread
+                runOnUiThread {
+                    for (msg in text.split("<<<>>>")) {
+                        val m = msg.trim()
+                        if (m.isNotEmpty()) bubble(m, assistant = true)
+                    }
+                }
+            } catch (_: Throwable) { }
+        }.start()
     }
 
     private fun showChat() {
@@ -419,8 +474,10 @@ class MainActivity : Activity() {
                     "OfflineRef: ошибка генерации $ans"
                 else {
                     val src = if (useRag)
-                        chunks.map { it.docTitle + " (фрагмент " + (it.ordinal + 1) + "/" + it.total + ")" }
-                            .distinct().joinToString(", ")
+                        chunks.map { ch ->
+                            ch.docTitle + " (фрагмент " + (ch.ordinal + 1) + "/" + ch.total +
+                                (if (ch.pageNo > 0) ", стр. " + ch.pageNo else "") + ")"
+                        }.distinct().joinToString(", ")
                     else null
                     "OfflineRef: " + sb.toString() +
                             (if (src != null) "\n\nИсточники: " + src else "\n\n(общие знания модели)") +
