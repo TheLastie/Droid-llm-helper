@@ -356,7 +356,7 @@ class KbDb private constructor(private val appContext: Context) :
     // ---------- каталог видов: гарантированная иллюстрация ----------
     @Volatile private var speciesCache: List<SpeciesInfo>? = null
 
-    private fun loadSpecies(): List<Species> {
+    private fun loadSpecies(): List<SpeciesInfo> {
         speciesCache?.let { return it }
         val list = mutableListOf<SpeciesInfo>()
         try {
