@@ -44,12 +44,25 @@ class KnowledgeActivity : Activity() {
                 }.start()
             }
         }
+        val resetBtn = Button(this).apply {
+            text = "Сбросить базу (к заводскому состоянию)"
+            setOnClickListener {
+                Thread {
+                    val ok = db.resetToFactory()
+                    runOnUiThread {
+                        refresh()
+                        toast(if (ok) "База сброшена к заводскому состоянию" else "Сброс не удался")
+                    }
+                }.start()
+            }
+        }
         listBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(title)
             addView(importBtn)
             addView(restoreBtn)
+            addView(resetBtn)
             addView(ScrollView(this@KnowledgeActivity).apply { addView(listBox) })
         }
         setContentView(root)
