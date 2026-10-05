@@ -390,6 +390,19 @@ class KbDb private constructor(private val appContext: Context) :
         return if (bestScore >= 2) best else null
     }
 
+    // Полный сброс базы к заводскому состоянию одной кнопкой
+    fun resetToFactory(): Boolean {
+        return try {
+            clearAll()
+            val prefs = appContext.getSharedPreferences("kbmeta", Context.MODE_PRIVATE)
+            prefs.edit().remove("asset_version").apply()
+            speciesCache = null
+            preloadFromAssets()
+        } catch (t: Throwable) {
+            false
+        }
+    }
+
     fun clearAll() {
         val db = writableDatabase
         db.beginTransaction()
