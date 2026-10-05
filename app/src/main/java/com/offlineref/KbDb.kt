@@ -376,7 +376,7 @@ class KbDb private constructor(private val appContext: Context) :
         val qwords = norm(query).replace(Regex("[^a-zа-я0-9 ]"), " ")
             .split(Regex("\\s+")).filter { it.length >= 3 && it !in STOP }
         if (qwords.isEmpty()) return null
-        var best: Species? = null
+        var best: SpeciesInfo? = null
         var bestScore = 0
         for (sp in loadSpecies()) {
             val swords = sp.name.split(" ").filter { it.length >= 3 }
