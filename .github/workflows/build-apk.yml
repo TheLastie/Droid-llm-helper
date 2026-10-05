@@ -79,7 +79,7 @@ jobs:
         run: gradle :app:generateDebugAssets --rerun-tasks -x preBuild -x preDebugBuild || true
 
       - name: Build
-        run: gradle assembleDebug --rerun-tasks --stacktrace
+        run: gradle assembleDebug --rerun-tasks --no-build-cache --stacktrace
 
       - name: Check MainActivity in dex
         run: python3 tools/check_dex.py
