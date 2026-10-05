@@ -3,6 +3,14 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+// ГРАДЛ НЕ ВИДИТ ИЗМЕНЕНИЯ ВНЕШНИХ ФАЙЛОВ В ASSETS (CI кладет их curl'ом).
+// Без этого APK получает КЭШ старой базы (79 фрагментов на устройстве).
+tasks.whenTaskAdded { t ->
+    if (t.name == "generateDebugAssets" || t.name == "mergeDebugAssets") {
+        t.outputs.upToDateWhen { false }
+    }
+}
+
 android {
     namespace 'com.offlineref'
     compileSdk 34
