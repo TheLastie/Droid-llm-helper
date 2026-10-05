@@ -362,7 +362,7 @@ class KbDb private constructor(private val appContext: Context) :
             val arr = org.json.JSONArray(appContext.assets.open("species.json").use { it.readBytes().toString(Charsets.UTF_8) })
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                list.add(Species(o.getString("name"), o.getInt("num"), o.getInt("atlas_page")))
+                list.add(Species(norm(o.getString("name")), o.getInt("num"), o.getInt("atlas_page")))
             }
         } catch (_: Throwable) { }
         speciesCache = list
