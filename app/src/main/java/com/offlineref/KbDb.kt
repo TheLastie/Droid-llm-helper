@@ -516,7 +516,7 @@ class KbDb private constructor(private val appContext: Context) :
     }
 
     companion object {
-        const val KB_ASSET_VERSION = 5
+        const val KB_ASSET_VERSION = 6
         @Volatile var lastDiag: ((String) -> Unit)? = null
 
         @Volatile private var instance: KbDb? = null
