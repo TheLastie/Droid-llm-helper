@@ -13,6 +13,9 @@ import android.net.Uri
 // стоит ~160 мс/токен, русский ~2.5 знака/токен -> большой контекст
 // не влезает в 60-секундный бюджет.
 
+// Вид гриба из каталога: имя, номер, страница цветного атласа
+class SpeciesInfo(val name: String, val num: Int, val atlasPage: Int)
+
 class KbDb private constructor(private val appContext: Context) :
     SQLiteOpenHelper(appContext, "kb", null, 3) {
 
@@ -351,18 +354,16 @@ class KbDb private constructor(private val appContext: Context) :
     }
 
     // ---------- каталог видов: гарантированная иллюстрация ----------
-    private data class Species(val name: String, val num: Int, val atlasPage: Int)
-
-    @Volatile private var speciesCache: List<Species>? = null
+    @Volatile private var speciesCache: List<SpeciesInfo>? = null
 
     private fun loadSpecies(): List<Species> {
         speciesCache?.let { return it }
-        val list = mutableListOf<Species>()
+        val list = mutableListOf<SpeciesInfo>()
         try {
             val arr = org.json.JSONArray(appContext.assets.open("species.json").use { it.readBytes().toString(Charsets.UTF_8) })
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                list.add(Species(norm(o.getString("name")), o.getInt("num"), o.getInt("atlas_page")))
+                list.add(SpeciesInfo(norm(o.getString("name")), o.getInt("num"), o.getInt("atlas_page")))
             }
         } catch (_: Throwable) { }
         speciesCache = list
@@ -371,7 +372,7 @@ class KbDb private constructor(private val appContext: Context) :
 
     // вид из запроса: матч основ слов запроса с названием вида.
     // "подосиновик", "мухомор красный", "бледная поганка" -> Species?
-    fun findSpecies(query: String): Species? {
+    fun findSpecies(query: String): SpeciesInfo? {
         val qwords = norm(query).replace(Regex("[^a-zа-я0-9 ]"), " ")
             .split(Regex("\\s+")).filter { it.length >= 3 && it !in STOP }
         if (qwords.isEmpty()) return null
