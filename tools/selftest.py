@@ -175,9 +175,40 @@ def main():
     l5 = dt < 200
     report["layers"]["L5_speed"] = {"pass": l5, "ms_per_query": round(dt, 1)}
 
+
+    # слой 6: каталог видов (гарантированные иллюстрации)
+    import urllib.request, os
+    SP_QA = [("подосиновик", "подосиновик"), ("бледная поганка", "поганка"),
+             ("мухомор красный", "мухомор"), ("опёнок", "оп"),
+             ("лисичка", "лисичк"), ("белый гриб", "бел"), ("рыжик", "рыжик"),
+             ("сморчок", "сморчк"), ("строчок", "строчк"), ("вешенка", "вешенк")]
+    sp_hits = 0
+    spec = {}
+    try:
+        with urllib.request.urlopen(
+            "https://raw.githubusercontent.com/TheLastie/Droid-llm-helper/apk/species.json", timeout=20) as r:
+            for e in json.load(r):
+                spec[e["name"]] = e["atlas_page"]
+    except Exception:
+        spec = {}
+    def fsp(query):
+        qw = [stemW(w) for w in re.sub(r"[^a-zа-я0-9 ]", " ", norm(query)).split()
+              if len(w) >= 3 and w not in STOP]
+        best, bs = None, 0
+        for nm, pg in spec.items():
+            sw = [w for w in nm.split() if len(w) >= 3]
+            sc = sum(2 for a in qw if any(stemW(b) == a or b.startswith(a) or a.startswith(b) for b in sw))
+            if sc > bs: bs, best = sc, (nm, pg)
+        return best if bs >= 2 else None
+    for q, frag in SP_QA:
+        r = fsp(q)
+        if r and frag in r[0]: sp_hits += 1
+    l6 = sp_hits >= len(SP_QA) * 0.8 and len(spec) >= 250
+    report["layers"]["L6_species"] = {"pass": l6, "catalog": len(spec), "hits": sp_hits, "total": len(SP_QA)}
+
     print(json.dumps(report, ensure_ascii=False, indent=1))
     critical = all(report["layers"][k]["pass"]
-                   for k in ["L1_structure", "L2_search", "L3_rag_prompt", "L4_negative"])
+                   for k in ["L1_structure", "L2_search", "L3_rag_prompt", "L4_negative", "L6_species"])
     print("CRITICAL:", "PASS" if critical else "FAIL")
     return 0 if critical else 1
 
