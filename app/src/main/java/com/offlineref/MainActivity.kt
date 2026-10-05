@@ -499,11 +499,11 @@ class MainActivity : Activity() {
                         // по запросу находим вид и его цветную страницу
                         if (chunks.any { it.docTitle.contains("гриб") }) {
                             val sp = KbDb.get(this@MainActivity).findSpecies(q)
-                            if (sp != null) {
-                                val img = java.io.File(filesDir, "pages/" + "page_%04d.jpg".format(sp.atlasPage))
-                                if (img.exists() && seen.add("atlas" + sp.atlasPage)) {
-                                    logBubble("иллюстрация из атласа: " + sp.name + " (№" + sp.num + ")")
-                                    addPageButton("Иллюстрация: " + sp.name, sp.atlasPage, img.absolutePath)
+                            sp?.let { species ->
+                                val img = java.io.File(filesDir, "pages/" + "page_%04d.jpg".format(species.atlasPage))
+                                if (img.exists() && seen.add("atlas" + species.atlasPage)) {
+                                    logBubble("иллюстрация из атласа: " + species.name + " (№" + species.num + ")")
+                                    addPageButton("Иллюстрация: " + species.name, species.atlasPage, img.absolutePath)
                                 }
                             }
                         }
